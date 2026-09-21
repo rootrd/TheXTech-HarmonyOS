@@ -1,0 +1,34 @@
+[Desktop Entry]
+Name=@DESKTOP_NAME@
+GenericName=@DESKTOP_GENERIC_NAME@
+Comment=@DESKTOP_COMMENT@
+Encoding=UTF-8
+Version=1.0
+Type=Application
+Terminal=false
+Icon=@DESKTOP_ICON@
+Exec=@DESKTOP_EXEC@ %f
+X-Purism-FormFactor=Workstation;Mobile;
+Categories=Game;
+StartupWMClass=@DESKTOP_WMCLASS@
+Actions=SpeedRunMode1;SpeedRunMode2;SpeedRunMode3;CompatModeClassic;CompatModeVanilla;
+
+[Desktop Action SpeedRunMode1]
+Name=Speedrun Mode 1 (Native)
+Exec=@DESKTOP_EXEC@ --speed-run-mode 1 %f
+
+[Desktop Action SpeedRunMode2]
+Name=Speedrun Mode 2 (Classic)
+Exec=@DESKTOP_EXEC@ --speed-run-mode 2 %f
+
+[Desktop Action SpeedRunMode3]
+Name=Speedrun Mode 3 (Strict Vanilla)
+Exec=@DESKTOP_EXEC@ --speed-run-mode 3 %f
+
+[Desktop Action CompatModeClassic]
+Name=Run in "Classic" compatibiltiy mode (critical bugfixes only)
+Exec=@DESKTOP_EXEC@ --compat-level classic %f
+
+[Desktop Action CompatModeVanilla]
+Name=Run in "Vanilla" strict compatibiltiy mode (no bugfixes at all)
+Exec=@DESKTOP_EXEC@ --compat-level vanilla %f

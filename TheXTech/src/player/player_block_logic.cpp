@@ -1,0 +1,1180 @@
+/*
+ * TheXTech - A platform game engine ported from old source code for VB6
+ *
+ * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
+ * Copyright (c) 2020-2026 Vitaly Novichkov <admin@wohlnet.ru>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <Logger/logger.h>
+
+#include "globals.h"
+
+#include "player.h"
+#include "blocks.h"
+#include "sound.h"
+#include "layers.h"
+#include "effect.h"
+#include "eff_id.h"
+#include "collision.h"
+#include "eff_id.h"
+#include "blk_id.h"
+#include "npc_traits.h"
+#include "config.h"
+#include "phys_env.h"
+
+#include "main/trees.h"
+
+void PlayerBlockLogic(int A, int& floorBlock, bool& movingBlock, bool& DontResetGrabTime, tempf_t cursed_value_C, const int oldStandingOnNpc)
+{
+    int oldSlope = Player[A].Slope;
+    Player[A].Slope = 0;
+
+    int blockPushX = 0;
+    bool hitCeiling = false; // previously called tempHit
+    bool hitWall = false; // previously called tempHit2
+
+    int ceilingSlope = 0; // was previously called tempSlope
+    int wallBlock = 0; // was previously called tempSlope2
+    int insideBlock = 0; // keeps track of hit 5 for slope detection -- was previously called tempSlope3
+
+    int ceilingBlock1 = 0;
+    int ceilingBlock2 = 0;
+
+    // Location_t floorLocation; // was previously called tempLocation3, moved into walking section
+
+    // This was previously shared between players, but is safe unless Block[wallBlock] satisfies certain properties before wallBlock gets set
+    num_t preWallX = 0; // The old X before player was moved -- was previously called tempSlope2X
+
+    Player[A].UnDuckSafe = true;
+
+    if(Player[A].Character == 5 && Player[A].Duck && (Player[A].Location.SpeedY == Physics.PlayerGravity || Player[A].StandingOnNPC != 0 || Player[A].Slope != 0))
+        Player[A].Location.set_height_floor(30);
+
+
+    // block collision optimization
+    // fBlock = FirstBlock[(Player[A].Location.X / 32) - 1];
+    // lBlock = LastBlock[((Player[A].Location.X + Player[A].Location.Width) / 32.0) + 1];
+    // blockTileGet(Player[A].Location, fBlock, lBlock);
+
+    Location_t unducked_loc = Player[A].Location;
+    // to keep track of whether unducking would be safe
+    if(Player[A].Duck && Physics.PlayerHeight[Player[A].Character][Player[A].State] > num_t::floor(unducked_loc.Height))
+        unducked_loc.set_height_floor(Physics.PlayerHeight[Player[A].Character][Player[A].State]);
+
+    UpdatableQuery<BlockRef_t> q(unducked_loc, SORTMODE_COMPAT, QUERY_FLBLOCK);
+
+    for(auto it = q.begin(); it != q.end(); ++it)
+    {
+        int B = *it;
+
+        // checks to see if a collision happened
+        if(Player[A].Location.X + Player[A].Location.Width >= Block[B].Location.X)
+        {
+            if(Player[A].Location.X <= Block[B].Location.X + Block[B].Location.Width)
+            {
+                if(Player[A].Location.Y + Player[A].Location.Height >= Block[B].Location.Y)
+                {
+                    if(Player[A].Location.Y <= Block[B].Location.Y + Block[B].Location.Height)
+                    {
+
+                        if(!Block[B].Hidden)
+                        {
+                            // the hitspot is used for collision detection to find out where to put the player after it collides with a block
+                            // the numbers tell what side the collision happened so it can move the plaer to the correct position
+                            // 1 means the player hit the block from the top
+                            // 2 is from the right
+                            // 3 is from the bottom
+                            // 4 is from the left
+                            num_t block_belt_speed = 0;
+                            if(Block[B].Type >= BLKID_CONVEYOR_L_START && Block[B].Type <= BLKID_CONVEYOR_L_END)
+                                block_belt_speed = -0.8_n;
+                            else if(Block[B].Type >= BLKID_CONVEYOR_R_START && Block[B].Type <= BLKID_CONVEYOR_R_END)
+                                block_belt_speed = 0.8_n;
+
+                            int HitSpot = FindRunningCollision(Player[A].Location, Block[B].Location, block_belt_speed); // this finds what part of the block the player collided
+
+                            // force hitspot 3 during cyclone jump (prevents catching on sides of ceiling blocks)
+                            if(Player[A].State == PLR_STATE_CYCLONE && !Player[A].DoubleJump && HitSpot != 1)
+                            {
+                                // cross-ref FindRunningCollision
+                                if(Player[A].Location.Y - Player[A].Location.SpeedY >= Block[B].Location.Y + Block[B].Location.Height - Block[B].Location.SpeedY)
+                                    HitSpot = 3;
+                            }
+
+                            if(BlockNoClipping[Block[B].Type]) // blocks that the player can't touch are forced to hitspot 0 (which means no collision)
+                                HitSpot = 0;
+
+                            if(BlockIsSizable[Block[B].Type] || BlockOnlyHitspot1[Block[B].Type]) // for sizable blocks, if the player didn't land on them from the top then he can walk through them
+                            {
+                                if(HitSpot != 1)
+                                    HitSpot = 0;
+
+                                if(Player[A].Mount == 2 || Player[A].StandingOnVehiclePlr != 0)
+                                    HitSpot = 0;
+                            }
+
+                            // for blocks that hurt the player
+                            if(BlockHurts[Block[B].Type])
+                            {
+                                if(Player[A].Mount == 2 ||
+                                    InvincibilityTime ||
+                                   (
+                                       ((HitSpot == 1 && Player[A].Mount) || (Player[A].Rolling && Player[A].State == PLR_STATE_SHELL)) &&
+                                       Block[B].Type != 598
+                                   )
+                                 )
+                                {}
+                                else
+                                {
+                                    if((HitSpot == 1 && (Block[B].Type == 110 || Block[B].Type == 408 || Block[B].Type == 430 || Block[B].Type == 511))
+                                        || (HitSpot == 4 && (Block[B].Type == 269 || Block[B].Type == 429))
+                                        || (HitSpot == 3 && (Block[B].Type == 268 || Block[B].Type == 407 || Block[B].Type == 431))
+                                        || (HitSpot == 2 && (Block[B].Type == 267 || Block[B].Type == 428))
+                                        || (Block[B].Type == 109))
+                                    {
+                                        PlayerHurt(A);
+                                    }
+
+                                    if(Block[B].Type == 598)
+                                    {
+                                        if(Player[A].Mount > 0 && HitSpot == 1)
+                                        {
+                                            cursed_value_C = tempf_t(Player[A].Location.Y + Player[A].Location.Height);
+                                            Player[A].Location.Y = Block[B].Location.Y - Player[A].Location.Height;
+                                            PlayerHurt(A);
+                                            Player[A].Location.Y = (num_t)cursed_value_C - Player[A].Location.Height;
+                                        }
+                                        else
+                                            PlayerHurt(A);
+                                    }
+
+
+                                    if(Player[A].TimeToLive > 0)
+                                        break;
+                                }
+                            }
+
+                            // hitspot 5 means the game doesn't know where the collision happened
+                            // if the player just stopped ducking and there is a hitspot 5 then force hitspot 3 (hit block from below)
+                            if(HitSpot == 5 && (Player[A].StandUp || NPC[Player[A].StandingOnNPC].Location.SpeedY < 0))
+                            {
+                                if(BlockSlope[Block[B].Type] == 0)
+                                    HitSpot = 3;
+                            }
+
+                            // if the block is invisible and the player didn't hit it from below then the player won't collide with it
+                            if(Block[B].Invis)
+                            {
+                                if(HitSpot != 3)
+                                    HitSpot = 0;
+                            }
+
+                            // unclear that this does what Redigit thought; maybe it did with a previous version of the coin switch code
+
+                            // ' fixes a bug with holding an npc that is really a block
+                            if(Player[A].HoldingNPC > 0)
+                            {
+                                if(NPC[Player[A].HoldingNPC].coinSwitchBlockType() == B)
+                                    HitSpot = 0;
+                            }
+
+                            // destroy some blocks if the player is touching it as a statue
+                            if(Block[B].Type == 457 && Player[A].Stoned)
+                            {
+                                HitSpot = 0;
+                                SafelyKillBlock(B);
+                            }
+
+                            // shadowmode is a cheat that allows the player to walk through walls
+                            if(ShadowMode && HitSpot != 1 && !(Block[B].Special > 0 && HitSpot == 3))
+                                HitSpot = 0;
+
+                            // this handles the collision for blocks that are sloped on the bottom
+                            if(BlockSlope2[Block[B].Type] != 0 && (Player[A].Location.Y > Block[B].Location.Y || (HitSpot != 2 && HitSpot != 4)) && HitSpot != 1 && !ShadowMode)
+                            {
+                                HitSpot = 0;
+                                ceilingSlope = B;
+
+                                num_t PlrMid;
+                                if(BlockSlope2[Block[B].Type] == 1)
+                                    PlrMid = Player[A].Location.X + Player[A].Location.Width;
+                                else
+                                    PlrMid = Player[A].Location.X;
+
+                                num_t Slope = (PlrMid - Block[B].Location.X) / (int_ok)Block[B].Location.Width;
+
+                                if(BlockSlope2[Block[B].Type] > 0)
+                                    Slope = 1 - Slope;
+
+                                if(Slope < 0)
+                                    Slope = 0;
+
+                                if(Slope > 1)
+                                    Slope = 1;
+
+                                num_t ceiling_y = Block[B].Location.Y + Block[B].Location.Height - ((int_ok)Block[B].Location.Height * Slope);
+
+                                if(unducked_loc.Y <= ceiling_y)
+                                    Player[A].UnDuckSafe = false;
+
+                                if(Player[A].Location.Y <= ceiling_y)
+                                {
+                                    if(BlockKills[Block[B].Type] && !(Player[A].Rolling && Player[A].Character == 5 && Player[A].State == PLR_STATE_SHELL))
+                                    {
+                                        if(!GodMode)
+                                            PlayerDead(A);
+                                    }
+
+                                    if(Player[A].Location.SpeedY == 0 ||
+                                       num_t::fEqual_f(Player[A].Location.SpeedY, Physics.PlayerGravity) || Player[A].Slope > 0 || Player[A].StandingOnNPC != 0)
+                                    {
+                                        num_t PlrMid = Player[A].Location.Y;
+                                        Slope = (PlrMid - Block[B].Location.Y) / (int_ok)Block[B].Location.Height;
+
+                                        if(Slope < 0)
+                                            Slope = 0;
+
+                                        if(Slope > 1)
+                                            Slope = 1;
+
+                                        if(BlockSlope2[Block[B].Type] < 0)
+                                            Player[A].Location.X = Block[B].Location.X + Block[B].Location.Width - ((int_ok)Block[B].Location.Width * Slope);
+                                        else
+                                            Player[A].Location.X = Block[B].Location.X + ((int_ok)Block[B].Location.Width * Slope) - Player[A].Location.Width;
+
+                                        Player[A].Location.SpeedX = 0;
+
+                                    }
+                                    else
+                                    {
+                                        Player[A].Location.Y = Block[B].Location.Y + Block[B].Location.Height - ((int_ok)Block[B].Location.Height * Slope);
+                                        if(Player[A].Location.SpeedY < 0)
+                                            PlaySoundSpatial(SFX_BlockHit, Player[A].Location);
+                                        if(Player[A].Location.SpeedY < -0.01_n)
+                                            Player[A].Location.SpeedY = -0.01_n;
+                                        if(Player[A].Mount == 2)
+                                            Player[A].Location.SpeedY = 2;
+                                        if(Player[A].CanFly2)
+                                            Player[A].Location.SpeedY = 2;
+                                    }
+
+                                    // cancel any jump except for a cyclone jump
+                                    if(!(Player[A].State == PLR_STATE_CYCLONE && !Player[A].DoubleJump))
+                                        Player[A].Jump = 0;
+                                }
+                            }
+
+                            // collision for blocks that are sloped on the top
+                            // MOST CURSED LINE: cursed_value_C (C in VB6 code) is entirely arbitrary at this point. BE WARNED, this may be a cause of incompatibilities with SMBX 1.3, and if so, we will need to improve this logic in the future.
+                            if(BlockSlope[Block[B].Type] != 0 && HitSpot != 3 && !(BlockSlope[Block[B].Type] == -1 && HitSpot == 2) && !(BlockSlope[Block[B].Type] == 1 && HitSpot == 4) && (Player[A].Location.Y + Player[A].Location.Height - 4 - (num_t)cursed_value_C <= Block[B].Location.Y + Block[B].Location.Height || (Player[A].Location.Y + Player[A].Location.Height - 12 <= Block[B].Location.Y + Block[B].Location.Height && Player[A].StandingOnNPC != 0)))
+                            {
+                                HitSpot = 0;
+                                if(
+                                        (Player[A].Mount == 1 || Player[A].Location.SpeedY >= 0 ||
+                                         Player[A].Slide || SuperSpeed || Player[A].Stoned) &&
+                                        (Player[A].Location.Y + Player[A].Location.Height <= Block[B].Location.Y + Block[B].Location.Height + Player[A].Location.SpeedY + 0.001_n ||
+                                         (Player[A].Slope == 0 && Block[B].Location.SpeedY < 0))
+                                        )
+                                {
+                                    num_t PlrMid;
+                                    if(BlockSlope[Block[B].Type] == 1)
+                                        PlrMid = Player[A].Location.X;
+                                    else
+                                        PlrMid = Player[A].Location.X + Player[A].Location.Width;
+
+                                    num_t Slope = (PlrMid - Block[B].Location.X) / (int_ok)Block[B].Location.Width;
+
+                                    if(BlockSlope[Block[B].Type] < 0)
+                                        Slope = 1 - Slope;
+
+                                    if(Slope < 0)
+                                        Slope = 0;
+
+                                    if(Slope > 1)
+                                        Slope = 1;
+
+                                    // if we're already on top of another (higher or more leftwards, at level load time) block this frame, consider canceling it
+                                    if(floorBlock > 0)
+                                    {
+                                        // the bug this is fixing is vanilla, but this case happens for a single frame every time a slope falls through ground since TheXTech 1.3.6,
+                                        // and only in the rare case where a slope falls through ground *it was originally below* in vanilla
+                                        if(g_config.fix_player_downward_clip && !CompareWalkBlock(floorBlock, B, Player[A].Location))
+                                        {
+                                            // keep the old block, other conditions are VERY likely to cancel it
+                                        }
+                                        else if(!BlockIsSizable[Block[floorBlock].Type])
+                                        {
+                                            if(Block[floorBlock].Location.Y != Block[B].Location.Y)
+                                                floorBlock = 0;
+                                        }
+                                        else
+                                        {
+                                            // NOTE: looks like a good place for a vb6-style fEqual
+                                            if(Block[floorBlock].Location.Y == Block[B].Location.Y + Block[B].Location.Height)
+                                                floorBlock = 0;
+                                        }
+                                    }
+
+                                    if(hitWall)
+                                    {
+                                        // NOTE: looks like a good place for a vb6-style fEqual
+                                        if(Block[wallBlock].Location.Y + Block[wallBlock].Location.Height == Block[B].Location.Y && BlockSlope[Block[wallBlock].Type] == BlockSlope[Block[B].Type])
+                                        {
+                                            hitWall = false;
+                                            wallBlock = 0;
+                                            Player[A].Location.X = preWallX;
+                                        }
+                                    }
+
+                                    if(insideBlock > 0)
+                                    {
+                                        Player[A].Location.Y = Block[insideBlock].Location.Y + Block[insideBlock].Location.Height + 0.01_n;
+                                        num_t PlrMid = Player[A].Location.Y + Player[A].Location.Height;
+                                        num_t Slope = 1 - (PlrMid - Block[B].Location.Y) / (int_ok)Block[B].Location.Height;
+
+                                        if(Slope < 0)
+                                            Slope = 0;
+
+                                        if(Slope > 1)
+                                            Slope = 1;
+
+                                        if(BlockSlope[Block[B].Type] > 0)
+                                            Player[A].Location.X = Block[B].Location.X + Block[B].Location.Width - ((int_ok)Block[B].Location.Width * Slope);
+                                        else
+                                            Player[A].Location.X = Block[B].Location.X + ((int_ok)Block[B].Location.Width * Slope) - Player[A].Location.Width;
+
+                                        Player[A].Location.SpeedX = 0;
+                                    }
+                                    else
+                                    {
+                                        if(Player[A].Location.Y >= Block[B].Location.Y + ((int_ok)Block[B].Location.Height * Slope) - Player[A].Location.Height - 0.1_n)
+                                        {
+
+                                            if(Player[A].GroundPound)
+                                            {
+                                                YoshiPound(A, Player[A].Mount, true);
+                                                Player[A].GroundPound = false;
+                                            }
+                                            else if(Player[A].YoshiYellow)
+                                            {
+                                                if(oldSlope == 0)
+                                                    YoshiPound(A, Player[A].Mount);
+                                            }
+
+                                            Player[A].Location.Y = Block[B].Location.Y + ((int_ok)Block[B].Location.Height * Slope) - Player[A].Location.Height - 0.1_n;
+
+                                            if(Player[A].Location.SpeedY > Player[A].Location.SpeedX * (int_ok)Block[B].Location.Height / (int_ok)Block[B].Location.Width * BlockSlope[Block[B].Type] || !Player[A].Slide)
+                                            {
+                                                if(!Player[A].WetFrame)
+                                                {
+                                                    cursed_value_C = (tempf_t)(Player[A].Location.SpeedX * (int_ok)Block[B].Location.Height / (int_ok)Block[B].Location.Width * BlockSlope[Block[B].Type]);
+                                                    Player[A].Location.SpeedY = (num_t)cursed_value_C;
+                                                    if(Player[A].Location.SpeedY > 0 && !Player[A].Slide && Player[A].Mount != 1 && Player[A].Mount != 2)
+                                                        Player[A].Location.SpeedY = Player[A].Location.SpeedY * 4;
+                                                }
+                                            }
+
+                                            Player[A].Slope = B;
+                                            if(BlockSlope[Block[B].Type] == 1 && GameMenu && Player[A].Location.SpeedX >= 2)
+                                            {
+                                                if(Player[A].Mount == 0 && Player[A].HoldingNPC == 0 && Player[A].Character <= 2)
+                                                {
+                                                    if(Player[A].Duck)
+                                                        UnDuck(Player[A]);
+                                                    Player[A].Slide = true;
+                                                }
+                                            }
+
+
+
+                                            if(Player[A].Location.SpeedY < 0 && !Player[A].Slide && !SuperSpeed && !Player[A].Stoned)
+                                                Player[A].Location.SpeedY = 0;
+                                            if(Block[B].Location.SpeedX != 0 || Block[B].Location.SpeedY != 0)
+                                            {
+                                                NPC[-A] = NPC_t();
+                                                NPC[-A].Location = Block[B].Location;
+                                                NPC[-A].Type = NPCID_METALBARREL;
+                                                NPC[-A].Active = true;
+                                                NPC[-A].TimeLeft = 100;
+                                                NPC[-A].Section = Player[A].Section;
+                                                NPC[-A].Special = B;
+                                                NPC[-A].Special2 = BlockSlope[Block[B].Type];
+                                                Player[A].StandingOnNPC = -A;
+                                                movingBlock = true;
+                                                // NOTE: Here was a bug that makes compare bool with 0 is always false
+                                                if(
+                                                        (g_config.fix_player_slope_speed &&
+                                                         Player[A].Location.SpeedX - NPC[Player[A].StandingOnNPC].Location.SpeedX < 0 &&
+                                                         BlockSlope[Block[B].Type]/*)*/ < 0) ||
+                                                        (Player[A].Location.SpeedX - NPC[Player[A].StandingOnNPC].Location.SpeedX > 0 &&
+                                                         BlockSlope[Block[B].Type] > 0)
+                                                        )
+                                                {
+                                                    if((Player[A].Location.SpeedX < 0 && Block[B].Location.SpeedX > 0) || (Player[A].Location.SpeedX > 0 && Block[B].Location.SpeedX < 0))
+                                                        Player[A].Location.SpeedY = 12;
+                                                }
+
+                                                NPC[-A].Location.Y = Player[A].Location.Y + Player[A].Location.Height;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+
+                            if(BlockKills[Block[B].Type] && !GodMode)
+                            {
+                                bool hot_boot = (Player[A].Mount == 1 && Player[A].MountType == 2);
+                                bool lava_roller = (Player[A].Rolling && Player[A].Character == 5 && Player[A].State == PLR_STATE_SHELL);
+                                hot_boot |= lava_roller;
+
+                                // this is a fix to help the player deal with lava blocks a bit easier
+                                // it moves the blocks hitbox down a few pixels
+                                if(BlockSlope[Block[B].Type] == 0 && !hot_boot)
+                                {
+                                    if(Player[A].Location.Y + Player[A].Location.Height < Block[B].Location.Y + 6)
+                                        HitSpot = 0;
+                                }
+
+                                // kill the player if touching a lava block
+                                if(HitSpot > 0 || Player[A].Slope == B)
+                                {
+                                    if(!hot_boot)
+                                    {
+                                        PlayerDead(A);
+                                        break;
+                                    }
+                                    else if(HitSpot != 1 && BlockSlope[Block[B].Type] == 0 && !lava_roller)
+                                    {
+                                        PlayerDead(A);
+                                        break;
+                                    }
+                                    else
+                                    {
+                                        Location_t tempLocation;
+                                        tempLocation.Y = Player[A].Location.Y + Player[A].Location.Height - 2;
+                                        tempLocation.X = Player[A].Location.X - 4 + dRand() * ((int)Player[A].Location.Width + 8) - 4;
+                                        NewEffect(EFFID_SKID_DUST, tempLocation);
+                                    }
+                                }
+                            }
+
+                            // if hitspot 5 with a sloped block then don't collide with it. the collision should have already been handled by the slope code above
+                            if(HitSpot == 5 && BlockSlope[Block[B].Type] != 0)
+                                HitSpot = 0;
+
+                            // shelsurfing code
+                            if(HitSpot > 1 && Player[A].ShellSurf)
+                            {
+                                Player[A].ShellSurf = false;
+                                Player[A].Location.SpeedY = NPC[Player[A].StandingOnNPC].Location.SpeedY + Physics.PlayerJumpVelocity * 0.75_rb;
+                                Player[A].StandingOnNPC = 0;
+                                PlaySoundSpatial(SFX_BlockHit, Player[A].Location);
+                            }
+
+                            if(BlockCheckPlayerFilter(B, A))  // Optmizied
+                                HitSpot = 0;
+                            //if(Block[B].Type == 626 && Player[A].Character == 1)
+                            //    HitSpot = 0;
+                            //if(Block[B].Type == 627 && Player[A].Character == 2)
+                            //    HitSpot = 0;
+                            //if(Block[B].Type == 628 && Player[A].Character == 3)
+                            //    HitSpot = 0;
+                            //if(Block[B].Type == 629 && Player[A].Character == 4)
+                            //    HitSpot = 0;
+                            //if(Block[B].Type == 632 && Player[A].Character == 5)
+                            //    HitSpot = 0;
+
+                            if(g_config.fix_player_clip_wall_at_npc && (HitSpot == 5 || HitSpot == 3) && oldStandingOnNpc > 0 && Player[A].Jump)
+                            {
+                                // Re-compute the collision with a block to avoid the unnecessary clipping through the wall
+                                auto pLoc = Player[A].Location;
+                                pLoc.SpeedX += NPC[oldStandingOnNpc].Location.SpeedX;
+                                pLoc.SpeedY += NPC[oldStandingOnNpc].Location.SpeedY;
+                                HitSpot = FindRunningCollision(pLoc, Block[B].Location, block_belt_speed);
+                                D_pLogDebug("Conveyor: Recomputed collision with block %d", B);
+                            }
+
+                            // the following code is where the collisions are handled
+
+
+                            if((HitSpot == 1 || Player[A].Slope == B) && Block[B].Slippy)
+                                Player[A].Slippy = true;
+
+
+                            if(HitSpot == 5 && Player[A].Quicksand > 0) // fixes quicksand hitspot 3 bug
+                            {
+                                if(Player[A].Location.Y - Player[A].Location.SpeedY < Block[B].Location.Y + Block[B].Location.Height)
+                                    HitSpot = 3;
+                            }
+                            // don't stop rolling when you clip into a block -- just bounce on it
+                            // (if there are multiple blocks, eventually the player will get pinched and leave rolling state)
+                            else if(HitSpot == 5 && Player[A].Rolling && Player[A].State == PLR_STATE_SHELL)
+                            {
+                                if(Block[B].Location.to_right_of(Player[A].Location))
+                                    HitSpot = 4;
+                                else
+                                    HitSpot = 2;
+                            }
+
+                            if(HitSpot == 1) // landed on the block from the top V
+                            {
+                                if(Player[A].Fairy && (Player[A].FairyCD > 0 || Player[A].Location.SpeedY > 0))
+                                    Player[A].FairyTime = 0;
+
+                                Player[A].Pinched.Bottom1 = 2; // for players getting squashed
+
+                                if(Block[B].Location.SpeedY != 0)
+                                {
+                                    Player[A].Pinched.Moving = 2;
+                                    Player[A].Pinched.MovingUD = true;
+                                }
+
+                                Player[A].Vine = 0; // stop climbing because you are now walking
+                                if(Player[A].Mount == 2) // for the clown car, make a niose and pound the ground if moving down fast enough
+                                {
+                                    if(Player[A].Location.SpeedY > 3)
+                                    {
+                                        PlaySoundSpatial(SFX_Stone, Player[A].Location);
+                                        YoshiPound(A, Player[A].Mount, true);
+                                    }
+                                }
+
+                                bool player_drill = (Player[A].State == PLR_STATE_CYCLONE && !Player[A].DoubleJump && Player[A].Controls.Down && Player[A].Location.SpeedY > Physics.PlayerTerminalVelocity * 0.9_n);
+                                if(player_drill && BlockIsBreakable(Block[B]) && Block[B].Type != 90)
+                                {
+                                    BlockHitHard(B);
+                                }
+                                else if(player_drill)
+                                {
+                                    if(Block[B].Special)
+                                    {
+                                        BlockHit(B, true, A);
+                                        PlaySoundSpatial(SFX_BlockHit, Player[A].Location);
+                                    }
+
+                                    YoshiPound(A, Player[A].Mount);
+
+                                    player_drill = false;
+                                }
+
+                                if(player_drill)
+                                {
+                                    // just keep going down
+                                }
+                                else if(floorBlock == 0) // For walking
+                                    floorBlock = B;
+                                else // Find the best block to walk on if touching multiple blocks
+                                {
+                                    if(g_config.fix_player_downward_clip)
+                                    {
+                                        if(CompareWalkBlock(floorBlock, B, Player[A].Location))
+                                            floorBlock = B;
+                                    }
+                                    else // Using old code
+                                    {
+                                        if(Block[B].Location.SpeedY != 0 && Block[floorBlock].Location.SpeedY == 0)
+                                            floorBlock = B;
+                                        else if(Block[B].Location.SpeedY == 0 && Block[floorBlock].Location.SpeedY != 0)
+                                        {
+                                        }
+                                        else
+                                        {
+                                            num_t C = num_t::abs(Block[B].Location.minus_center_x(Player[A].Location));
+                                            num_t D = num_t::abs(Block[floorBlock].Location.minus_center_x(Player[A].Location));
+
+                                            if(C < D)
+                                                floorBlock = B;
+
+                                            // this is the case where an unbound C gets written to
+                                            cursed_value_C = (tempf_t)C;
+                                        }
+
+                                        // if this block is moving up give it priority
+                                        if(Block[B].Location.SpeedY < 0 && Block[B].Location.Y < Block[floorBlock].Location.Y)
+                                            floorBlock = B;
+                                    }
+                                }
+
+                            }
+                            else if(HitSpot == 2 || HitSpot == 4) // hit the block from the right <---- (or left now! -------.)
+                            {
+                                if(HitSpot == 2 && BlockSlope[Block[oldSlope].Type] == 1 && Block[oldSlope].Location.Y <= Block[B].Location.Y)
+                                {
+                                    // Just a blank block :-P
+                                }
+                                else
+                                {
+                                    preWallX = Player[A].Location.X;
+
+                                    if(HitSpot == 4)
+                                    {
+                                        Player[A].Location.X = Block[B].Location.X - Player[A].Location.Width - 0.01_n;
+                                        Player[A].Pinched.Right4 = 2;
+                                    }
+                                    else
+                                    {
+                                        Player[A].Location.X = Block[B].Location.X + Block[B].Location.Width + 0.01_n;
+                                        Player[A].Pinched.Left2 = 2;
+                                    }
+
+                                    if(Block[B].Location.SpeedX != 0)
+                                    {
+                                        Player[A].Pinched.Moving = 2;
+                                        Player[A].Pinched.MovingLR = true;
+                                    }
+
+                                    if(Player[A].Mount == 2)
+                                    {
+                                        // cast through float because in VB6 the old X location was temporarily stored in mountBump, which is a float
+                                        Player[A].mountBump = (numf_t)(Player[A].Location.X - (num_t)(tempf_t)preWallX);
+                                    }
+
+                                    wallBlock = B;
+                                    hitWall = true;
+
+                                    // IMPORTANT: this case was truncation until v1.3.7.1-dev. Confirm that changing to VB6 rounding does not cause any issues.
+                                    blockPushX = num_t::vb6round(Block[B].Location.SpeedX);
+
+                                    if(Block[B].Slippy)
+                                        Player[A].SlippyWall = true;
+                                }
+                            }
+                            else if(HitSpot == 3) // hit the block from below
+                            {
+                                // add more generous margin to prevent unfair crush death with sloped ceiling
+                                bool ignore = (g_config.fix_player_crush_death
+                                    && (Block[B].Location.X + Block[B].Location.Width - 2 < Player[A].Location.X
+                                        || Player[A].Location.X + Player[A].Location.Width - 2 < Block[B].Location.X));
+
+                                if(!Player[A].ForceHitSpot3 && !Player[A].StandUp && !ignore)
+                                    Player[A].Pinched.Top3 = 2;
+
+                                if(Block[B].Location.SpeedY != 0 && !ignore)
+                                {
+                                    Player[A].Pinched.Moving = 2;
+                                    Player[A].Pinched.MovingUD = true;
+                                }
+
+                                hitCeiling = true;
+                                if(ceilingBlock1 == 0)
+                                    ceilingBlock1 = B;
+                                else
+                                    ceilingBlock2 = B;
+                            }
+                            else if(HitSpot == 5) // try to find out where the player hit the block from
+                            {
+                                if(oldSlope > 0)
+                                {
+                                    if(Block[oldSlope].Location.Height == 0)
+                                    {
+                                        // SMBX 1.3 would have crashed here
+                                    }
+                                    else
+                                    {
+                                        Player[A].Location.Y = Block[B].Location.Y + Block[B].Location.Height + 0.01_n;
+                                        num_t PlrMid = Player[A].Location.Y + Player[A].Location.Height;
+                                        num_t Slope = 1 - (PlrMid - Block[oldSlope].Location.Y) / (int_ok)Block[oldSlope].Location.Height;
+                                        if(Slope < 0)
+                                            Slope = 0;
+                                        if(Slope > 1)
+                                            Slope = 1;
+                                        if(BlockSlope[Block[oldSlope].Type] > 0)
+                                            Player[A].Location.X = Block[oldSlope].Location.X + Block[oldSlope].Location.Width - ((int_ok)Block[oldSlope].Location.Width * Slope);
+                                        else
+                                            Player[A].Location.X = Block[oldSlope].Location.X + ((int_ok)Block[oldSlope].Location.Width * Slope) - Player[A].Location.Width;
+                                        Player[A].Location.SpeedX = 0;
+                                    }
+                                }
+                                else
+                                {
+                                    insideBlock = B;
+
+                                    if(Block[B].Location.to_right_of(Player[A].Location))
+                                        Player[A].Pinched.Right4 = 2;
+                                    else
+                                        Player[A].Pinched.Left2 = 2;
+
+                                    if(Block[B].Location.SpeedX != 0 || Block[B].Location.SpeedY != 0)
+                                    {
+                                        Player[A].Pinched.Moving = 2;
+
+                                        if(Block[B].Location.SpeedX != 0)
+                                            Player[A].Pinched.MovingLR = true;
+
+                                        if(Block[B].Location.SpeedY != 0)
+                                            Player[A].Pinched.MovingUD = true;
+                                    }
+
+                                    Location_t playerFeet; // previously tempLocation
+                                    playerFeet.X = Player[A].Location.X;
+                                    playerFeet.Width = Player[A].Location.Width;
+                                    playerFeet.Y = Player[A].Location.Y + Player[A].Location.Height;
+                                    playerFeet.Height = 0.1_n;
+                                    bool hasFloor = false; // previously tempBool
+
+                                    // this could have caused an unusual TheXTech bug where lBlock would get overwritten
+                                    // (this wouldn't affect VB6 because loop bounds are evaluated only on loop start)
+
+                                    // fBlock = FirstBlock[(playerFeet.X / 32) - 1];
+                                    // lBlock = LastBlock[((playerFeet.X + playerFeet.Width) / 32.0) + 1];
+                                    // blockTileGet(playerFeet, fBlock, lBlock);
+
+                                    for(int C : treeFLBlockQuery(playerFeet, SORTMODE_COMPAT))
+                                    {
+                                        if(CheckCollision(playerFeet, Block[C].Location) && !Block[C].Hidden)
+                                        {
+                                            if(BlockSlope[Block[C].Type] == 0)
+                                                hasFloor = true;
+                                            else
+                                            {
+                                                Player[A].Location.Y = Block[B].Location.Y + Block[B].Location.Height; // + 0.01
+                                                num_t PlrMid = Player[A].Location.Y + Player[A].Location.Height;
+                                                num_t Slope = 1 - (PlrMid - Block[C].Location.Y) / (int_ok)Block[C].Location.Height;
+                                                if(Slope < 0)
+                                                    Slope = 0;
+                                                if(Slope > 1)
+                                                    Slope = 1;
+                                                if(BlockSlope[Block[C].Type] > 0)
+                                                    Player[A].Location.X = Block[C].Location.X + Block[C].Location.Width - ((int_ok)Block[C].Location.Width * Slope);
+                                                else
+                                                    Player[A].Location.X = Block[C].Location.X + ((int_ok)Block[C].Location.Width * Slope) - Player[A].Location.Width;
+                                                Player[A].Location.SpeedX = 0;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    // arbitrary but fine for here (for now)
+                                    // FIXME: look for cases where this is too high
+                                    cursed_value_C = numBlock;
+
+                                    /// TODO: find all cases where C is set and could "stick", and make them persistent
+                                    //// decided whether or not to care about 2P and higher (C values from NPC checks)
+
+                                    if(hasFloor)
+                                    {
+                                        Player[A].UnDuckSafe = false;
+                                        Player[A].CanJump = false;
+                                        Player[A].Jump = 0;
+                                        Player[A].Location.X += -4 * Player[A].Direction;
+                                        Player[A].Location.Y += -Player[A].Location.SpeedY;
+                                        Player[A].Location.SpeedX = 0;
+                                        Player[A].Location.SpeedY = 0;
+
+                                        q.update(Player[A].Location, it);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    else if(unducked_loc.Y <= Block[B].Location.Y + Block[B].Location.Height)
+                        Player[A].UnDuckSafe = false;
+                }
+            }
+        }
+        else
+        {
+        }
+    }
+
+    if(Player[A].Character == 5 && Player[A].Duck && !Player[A].Rolling)
+        Player[A].Location.set_height_floor(Physics.PlayerDuckHeight[Player[A].Character][Player[A].State]);
+
+
+    // helps the player run down slopes at different angles
+    if(Player[A].Slope == 0 && oldSlope > 0 && Player[A].Mount != 1 && Player[A].Mount != 2 && !Player[A].Slide)
+    {
+        if(Block[oldSlope].Location.Width == 0)
+        {
+            // SMBX 1.3 would have crashed here
+        }
+        else if(Player[A].Location.SpeedY > 0)
+        {
+            tempf_t C = (tempf_t)(Player[A].Location.SpeedX * (int_ok)Block[oldSlope].Location.Height / (int_ok)Block[oldSlope].Location.Width * BlockSlope[Block[oldSlope].Type]);
+            if(C > 0)
+                Player[A].Location.SpeedY = (num_t)C;
+        }
+    }
+
+    if(hitWall && Player[A].Rolling)
+    {
+        int slope = BlockSlope[Block[wallBlock].Type];
+
+        // don't crash on slopes you should be going up!
+        if(slope != -Player[A].Direction)
+        {
+            BlockHit(wallBlock, false, A);
+            BlockHitHard(wallBlock);
+            PlaySoundSpatial(SFX_BlockHit, Player[A].Location);
+
+            // uses layer's speed to fix a bug where the sides of conveyor belts changed the player's speed
+            num_t block_speed = (num_t)Layer[Block[wallBlock].Layer].ApplySpeedX;
+            num_t rel_speed = Player[A].Location.SpeedX - block_speed;
+
+            if((rel_speed > 0) == (Player[A].Direction > 0) && !hitCeiling && Player[A].State == PLR_STATE_SHELL)
+            {
+                Player[A].Location.SpeedX = block_speed - rel_speed;
+
+                // help player go over 1-block gaps here
+                if(!floorBlock && !Player[A].StandingOnNPC && !Player[A].Slope)
+                {
+                    Player[A].Location.Y -= 4;
+                    Player[A].StandUp = true;
+                    Player[A].ForceHitSpot3 = true; // sets standup the next frame
+                }
+            }
+        }
+
+        hitWall = false;
+
+        // in polar, if the block can't be destroyed, do stop!
+        if(Player[A].State == PLR_STATE_POLAR)
+        {
+            if(!BlockIsBreakable(Block[wallBlock]))
+            {
+                hitWall = true;
+                if(Player[A].UnDuckSafe && !hitCeiling)
+                {
+                    Player[A].Rolling = false;
+                    Player[A].Slide = false;
+                }
+            }
+        }
+    }
+
+    if(floorBlock > 0) // For walking
+    {
+        if(Player[A].StandingOnNPC == -A) // fors standing on movable blocks
+        {
+            if(NPC[Player[A].StandingOnNPC].Special2 != 0)
+            {
+                Player[A].Location.SpeedX += -NPC[Player[A].StandingOnNPC].Location.SpeedX;
+                movingBlock = false;
+                Player[A].StandingOnNPC = 0;
+            }
+        }
+
+        // diggable dirt
+        if(Block[floorBlock].Type == 370 && Player[A].StandingOnNPC <= 0) // dig dirt
+        {
+            DontResetGrabTime = true;
+            // B = floorBlock;
+            if(Player[A].TailCount == 0 && Player[A].Controls.Down && Player[A].Controls.Run && Player[A].Mount == 0 && !Player[A].Stoned && Player[A].HoldingNPC == 0 && (Player[A].GrabTime > 0 || Player[A].RunRelease))
+            {
+                if((Player[A].GrabTime >= 12 && Player[A].Character < 3) || (Player[A].GrabTime >= 16 && Player[A].Character == 3) || (Player[A].GrabTime >= 8 && Player[A].Character == 4))
+                {
+                    Player[A].Location.SpeedX = (num_t)Player[A].GrabSpeed;
+                    Player[A].GrabSpeed = 0;
+                    Block[floorBlock].Hidden = true;
+                    Block[floorBlock].Layer = LAYER_DESTROYED_BLOCKS;
+                    syncLayersTrees_Block(floorBlock);
+                    NewEffect(EFFID_SMOKE_S3, Block[floorBlock].Location);
+                    // NOTE: SpeedY was not doubled for EFFID_SMOKE_S3 in SMBX 1.3
+                    Effect[numEffects].Location.SpeedY = -2;
+                    Player[A].GrabTime = 0;
+                }
+                else
+                {
+                    if(Player[A].GrabTime == 0)
+                    {
+                        PlaySoundSpatial(SFX_Grab, Player[A].Location);
+                        Player[A].FrameCount = 0;
+                        Player[A].GrabSpeed = (numf_t)Player[A].Location.SpeedX;
+                    }
+                    Player[A].Location.SpeedX = 0;
+                    Player[A].Slide = false;
+                    Player[A].GrabTime += 1;
+                }
+            }
+            else if(g_config.fix_player_stuck_on_dirt)
+                DontResetGrabTime = false;
+        }
+
+        bool cancelWalk = false;
+
+        if(hitWall)
+        {
+            if(!WalkingCollision(Player[A].Location, Block[floorBlock].Location))
+                cancelWalk = true;
+
+            // the logic below was previously duplicated with minor differences depending on the balue of hitWall
+        }
+
+        if(!cancelWalk)
+        {
+            // was previously called tempLocation3 and set whenever floorBlock (previously tempHit3) was set
+            const Location_t& floorLocation = Block[floorBlock].Location;
+            Player[A].Location.Y = floorLocation.Y - Player[A].Location.Height;
+
+            // NEW: move aquatic swimming player away from the floor -- helps with spikes
+            if(Player[A].AquaticSwim)
+                Player[A].Location.Y -= 0.01_n;
+
+            if(!hitWall && Player[A].StandingOnNPC != 0)
+            {
+                if(NPC[Player[A].StandingOnNPC].Location.Y <= floorLocation.Y && Player[A].StandingOnNPC != Player[A].HoldingNPC)
+                    Player[A].Location.Y = NPC[Player[A].StandingOnNPC].Location.Y - Player[A].Location.Height;
+            }
+
+            if(Player[A].GroundPound)
+            {
+                YoshiPound(A, Player[A].Mount, true);
+                Player[A].GroundPound = false;
+            }
+            else if(Player[A].YoshiYellow)
+                YoshiPound(A, Player[A].Mount);
+
+            if(hitWall || Player[A].Slope == 0 || Player[A].Slide)
+                Player[A].Location.SpeedY = 0;
+
+            if(floorLocation.SpeedX != 0 || floorLocation.SpeedY != 0)
+            {
+                NPC[-A] = NPC_t();
+                NPC[-A].Location = floorLocation;
+                NPC[-A].Type = NPCID_METALBARREL;
+                NPC[-A].Active = true;
+                NPC[-A].TimeLeft = 100;
+                NPC[-A].Section = Player[A].Section;
+                NPC[-A].Special = floorBlock;
+                Player[A].StandingOnNPC = -A;
+                movingBlock = true;
+                Player[A].Location.SpeedY = 12;
+            }
+
+            if(hitWall)
+            {
+                // this series of if clauses did not exist in the hitWall case
+            }
+            else if(Player[A].StandingOnNPC != 0 && !movingBlock)
+            {
+                Player[A].Location.SpeedY = 1;
+                // the single Pinched variable has always been false since SMBX64
+                // if(!NPC[Player[A].StandingOnNPC].Pinched && !FreezeNPCs)
+                if(!FreezeNPCs)
+                    Player[A].Location.SpeedX += -NPC[Player[A].StandingOnNPC].Location.SpeedX - (num_t)NPC[Player[A].StandingOnNPC].BeltSpeed;
+                Player[A].StandingOnNPC = 0;
+            }
+            else if(movingBlock)
+            {
+                Player[A].Location.SpeedY = NPC[-A].Location.SpeedY + 1;
+                if(Player[A].Location.SpeedY < 0)
+                    Player[A].Location.SpeedY = 0;
+            }
+#if 0
+            // in the only case where this code is reachable, it has no effect
+            else
+            {
+                if(Player[A].Slope == 0 || Player[A].Slide)
+                    Player[A].Location.SpeedY = 0;
+            }
+#endif
+
+            if(Block[floorBlock].Type == 55 && !FreezeNPCs) // Make the player jump if the block is bouncy
+            {
+                BlockHit(floorBlock, true);
+
+                if(!Player[A].Slide)
+                    Player[A].Multiplier = 0;
+
+                Player[A].Location.SpeedY = Physics.PlayerJumpVelocity;
+                PlaySoundSpatial(SFX_BlockHit, Player[A].Location);
+
+                if(Player[A].Controls.Jump || Player[A].Controls.AltJump)
+                {
+                    PlaySoundSpatial(SFX_Jump, Player[A].Location);
+                    Player[A].Jump = Physics.PlayerBlockJumpHeight;
+
+                    if(Player[A].Character == 2)
+                        Player[A].Jump += 3;
+
+                    if(Player[A].SpinJump)
+                        Player[A].Jump -= 6;
+                }
+            }
+
+            // smash turn blocks
+            if(Player[A].SpinJump && (Block[floorBlock].Type == 90 || Block[floorBlock].Type == 526) && (Player[A].State > 1 && Player[A].State != PLR_STATE_TINY) && Block[floorBlock].Special == 0)
+            {
+                Player[A].Location.SpeedY = Physics.PlayerJumpVelocity;
+                Block[floorBlock].Kill = true;
+                if(iBlocks < maxBlocks)
+                {
+                    iBlocks++;
+                    iBlock[iBlocks] = floorBlock;
+                }
+                // HitSpot = 0; // this definition is never used
+                floorBlock = 0;
+                Player[A].Jump = 7;
+
+                if(Player[A].Character == 2)
+                    Player[A].Jump += 3;
+
+                if(Player[A].Controls.Down)
+                {
+                    Player[A].Jump = 0;
+                    Player[A].Location.SpeedY = Physics.PlayerJumpVelocity / 2;
+                }
+            }
+        }
+    }
+
+    if(wallBlock > 0 && ceilingSlope > 0)
+    {
+        if(Block[ceilingSlope].Location.Y + Block[ceilingSlope].Location.Height == Block[wallBlock].Location.Y + Block[wallBlock].Location.Height)
+            hitWall = false;
+    }
+
+    if(!hitCeiling && hitWall)
+    {
+        if(Player[A].Location.SpeedX + NPC[Player[A].StandingOnNPC].Location.SpeedX > 0 && Player[A].Controls.Right)
+        {
+            Player[A].Location.SpeedX = 0.2_n * Player[A].Direction;
+            if(blockPushX > 0)
+                Player[A].Location.SpeedX += blockPushX;
+        }
+        else if(Player[A].Location.SpeedX + NPC[Player[A].StandingOnNPC].Location.SpeedX < 0 && Player[A].Controls.Left)
+        {
+            Player[A].Location.SpeedX = 0.2_n * Player[A].Direction;
+            if(blockPushX < 0)
+                Player[A].Location.SpeedX += blockPushX;
+        }
+        else
+        {
+            if(Player[A].Controls.Right || Player[A].Controls.Left)
+                Player[A].Location.SpeedX = -NPC[Player[A].StandingOnNPC].Location.SpeedX + 0.2_n * Player[A].Direction;
+            else
+                Player[A].Location.SpeedX = 0;
+        }
+
+        if(Player[A].Mount == 2)
+            Player[A].Location.SpeedX = 0;
+
+        // disable mid-hop jumps (fixes a clipping bug)
+        if(Player[A].State == PLR_STATE_AQUATIC && !Player[A].Mount && Player[A].MountSpecial)
+        {
+            Player[A].MountSpecial = 2;
+            Player[A].Location.SpeedX = Block[wallBlock].Location.SpeedX;
+        }
+    }
+
+    int ceilingBlock = 0; // was called B
+
+    if(ceilingBlock2 != 0) // Hitting a block from below
+    {
+        num_t C = num_t::abs(Block[ceilingBlock1].Location.minus_center_x(Player[A].Location));
+        num_t D = num_t::abs(Block[ceilingBlock2].Location.minus_center_x(Player[A].Location));
+
+        if(C < D)
+            ceilingBlock = ceilingBlock1;
+        else
+            ceilingBlock = ceilingBlock2;
+    }
+    else if(ceilingBlock1 != 0)
+    {
+        ceilingBlock = ceilingBlock1;
+        if(Block[ceilingBlock].Location.X + Block[ceilingBlock].Location.Width - Player[A].Location.X <= 4)
+        {
+            Player[A].Location.X = Block[ceilingBlock].Location.X + Block[ceilingBlock].Location.Width + 0.1_n;
+            ceilingBlock = 0;
+        }
+        else if(Player[A].Location.X + Player[A].Location.Width - Block[ceilingBlock].Location.X <= 4)
+        {
+            Player[A].Location.X = Block[ceilingBlock].Location.X - Player[A].Location.Width - 0.1_n;
+            ceilingBlock = 0;
+        }
+    }
+
+    if(ceilingBlock > 0)
+    {
+        // NEW: bounce an aquatic-swimming player off the ceiling if it has an item
+        if(Player[A].AquaticSwim && Block[ceilingBlock].Special)
+            Player[A].SwimCount = MAZE_DIR_DOWN * 16 + 2;
+
+        // play ceiling hit sound if player is not aquatic swimming (normal) or if the ceiling block has an item
+        if(!Player[A].AquaticSwim || Block[ceilingBlock].Special)
+            PlaySoundSpatial(SFX_BlockHit, Player[A].Location);
+
+        Player[A].Location.Y = Block[ceilingBlock].Location.Y + Block[ceilingBlock].Location.Height + 0.01_n;
+
+        if(Player[A].State == PLR_STATE_CYCLONE && !Player[A].DoubleJump && Player[A].Jump)
+        {
+            Player[A].Location.SpeedY += 2.0_n;
+            Player[A].Jump -= 1;
+        }
+        else
+        {
+            Player[A].Location.SpeedY = -0.01_n + Block[ceilingBlock].Location.SpeedY;
+            Player[A].Jump = 0;
+        }
+
+        if(Player[A].Vine > 0)
+            Player[A].Location.Y += 0.1_n;
+
+        if(Player[A].Fairy || Player[A].Mount == 2 || Player[A].CanFly2)
+            Player[A].Location.SpeedY = 2;
+
+        if(Player[A].Mount != 2) // Tell the block it was hit
+            BlockHit(ceilingBlock, false, A);
+
+        if(Block[ceilingBlock].Type == 55) // If it is a bouncy block the knock the player down
+            Player[A].Location.SpeedY = 3;
+
+        if(Player[A].State > 1 && Player[A].State != PLR_STATE_TINY && (Player[A].Character != 5 || Player[A].Rolling)) // If the player was big ask the block nicely to die
+        {
+            if(Player[A].Mount != 2 && Block[ceilingBlock].Type != 293)
+                BlockHitHard(ceilingBlock);
+        }
+
+        if(Player[A].Duck)
+            Player[A].UnDuckSafe = false;
+    }
+
+    if(Player[A].StandingOnNPC != 0)
+    {
+        if(!hitWall)
+        {
+            // the single Pinched variable has always been false since SMBX64
+            // if(!NPC[Player[A].StandingOnNPC].Pinched && !FreezeNPCs)
+            if(!FreezeNPCs)
+                Player[A].Location.SpeedX += -NPC[Player[A].StandingOnNPC].Location.SpeedX - (num_t)NPC[Player[A].StandingOnNPC].BeltSpeed;
+        }
+    }
+
+    if(Player[A].Slide && oldSlope > 0 && Player[A].Slope == 0 && Player[A].Location.SpeedY < 0)
+    {
+        if(Player[A].NoGravity == 0)
+        {
+            // Player[A].NoGravity = static_cast<int>(floor(static_cast<double>(Player[A].Location.SpeedY / Physics.PlayerJumpVelocity * 8)));
+            // PlayerJumpVelocity is -5.7, SpeedY is negative
+            Player[A].NoGravity = (int)(Player[A].Location.SpeedY * -80) / 57;
+        }
+    }
+    else if(Player[A].Slope > 0 || oldSlope > 0 || !Player[A].Slide)
+        Player[A].NoGravity = 0;
+
+    // if(Player[A].Slide)  // Simplified below
+    // {
+    //     if(Player[A].Location.SpeedX > 1 || Player[A].Location.SpeedX < -1)
+    //         Player[A].SlideKill = true;
+    //     else
+    //         Player[A].SlideKill = false;
+    // }
+    // else
+    //     Player[A].SlideKill = false;
+
+    Player[A].SlideKill = Player[A].Slide && (num_t::abs(Player[A].Location.SpeedX) > 1);
+}

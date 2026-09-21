@@ -1,0 +1,504 @@
+name: Ubuntu DEB CI
+
+on:
+  push:
+    branches:
+      - main
+      - stable*
+      - versus-ci
+      - versus-ci-ubuntu
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "${{ matrix.config.name }} | ${{ matrix.config.build_type }}"
+    runs-on: ${{ matrix.config.os }}
+    container: ${{ matrix.config.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: "DEB Ubuntu 14.04 x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu1404-64bit:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=OFF -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_BUILD_GL_ES_LEGACY=OFF \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_USE_ANGLE_TRANSLATOR=OFF \
+            -DCMAKE_C_COMPILER=gcc-8 \
+            -DCMAKE_CXX_COMPILER=g++-8 \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.19), libpng12-0 (>= 1.2.50), libjpeg-turbo8 (>= 1.3.0) | libturbojpeg0 (>= 1.3.0), libasound2 (>= 1.0.27), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 14 x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-14-04-amd64",
+            upload_directory: "www/ubuntu-14-04/"
+          }
+        - {
+            name: "DEB Ubuntu 14.04 32bit",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu1404-32bit:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF \
+            -DUSE_STATIC_LIBC=ON \
+            -DUSE_SYSTEM_LIBS=OFF \
+            -DUSE_SHARED_FREEIMAGE=OFF \
+            -DUSE_SYSTEM_SDL2=OFF \
+            -DUSE_FREEIMAGE_SYSTEM_LIBS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_BUILD_GL_ES_LEGACY=OFF \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_USE_ANGLE_TRANSLATOR=OFF \
+            -DCMAKE_C_COMPILER=/usr/bin/i686-linux-gnu-gcc-8 \
+            -DCMAKE_CXX_COMPILER=/usr/bin/i686-linux-gnu-g++-8 \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=i386 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.19), libpng12-0 (>= 1.2.50), libjpeg-turbo8 (>= 1.3.0) | libturbojpeg0 (>= 1.3.0), libasound2 (>= 1.0.27), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 14 x86_32, everything pre-installed'; ln -sf /usr/bin/i686-linux-gnu-gcc-8 /usr/bin/gcc; ln -sf /usr/bin/i686-linux-gnu-g++-8 /usr/bin/g++;",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-14-04-i386",
+            upload_directory: "www/ubuntu-14-04/"
+          }
+        - {
+            name: "DEB Ubuntu 16.04 x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu1604-64bit:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=OFF -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_BUILD_GL_ES_LEGACY=OFF \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.23), libpng12-0 (>= 1.2.54), libjpeg-turbo8 (>= 1.4.2) | libturbojpeg0 (>= 1.4.2), libasound2 (>= 1.1.0), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 16 x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-16-04-amd64",
+            upload_directory: "www/ubuntu-16-04/"
+          }
+        - {
+            name: "DEB Ubuntu 16.04 32bit",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu1604-32bit:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF \
+            -DUSE_STATIC_LIBC=ON \
+            -DUSE_SYSTEM_LIBS=OFF \
+            -DUSE_SHARED_FREEIMAGE=OFF \
+            -DUSE_SYSTEM_SDL2=OFF \
+            -DUSE_FREEIMAGE_SYSTEM_LIBS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_BUILD_GL_ES_LEGACY=OFF \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=i386 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.23), libpng12-0 (>= 1.2.54), libjpeg-turbo8 (>= 1.4.2) | libturbojpeg0 (>= 1.4.2), libasound2 (>= 1.1.0), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\" \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_linux_gcc_toolchain_x32.cmake",
+
+            deps_cmdline: "echo 'Ubuntu 16 x86_32, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-16-04-i386",
+            upload_directory: "www/ubuntu-16-04/"
+          }
+        - {
+            name: "DEB Ubuntu 16.04 armhf",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu1604-armhf-cross:latest",
+            cross: true,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF \
+            -DUSE_STATIC_LIBC=ON \
+            -DUSE_SYSTEM_LIBS=OFF \
+            -DUSE_SHARED_FREEIMAGE=OFF \
+            -DUSE_SYSTEM_SDL2=OFF \
+            -DUSE_FREEIMAGE_SYSTEM_LIBS=OFF \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_BUILD_GL_ES_LEGACY=OFF \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=armhf \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.23), libpng12-0 (>= 1.2.54), libjpeg-turbo8 (>= 1.4.2) | libturbojpeg0 (>= 1.4.2), libasound2 (>= 1.1.0), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\" \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_linux_gcc_toolchain_armhf.cmake",
+
+            deps_cmdline: "echo 'Ubuntu 16 armhf, cross from x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-16-04-armhf",
+            upload_directory: "www/ubuntu-16-04/"
+          }
+        - {
+            name: "DEB Ubuntu 18.04 x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu1804:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_BUILD_GL_ES_LEGACY=OFF \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.27), libsdl2-2.0-0 (>= 2.0.8), libpng16-16 (>= 1.6.34), libjpeg-turbo8 (>= 1.5.2) | libturbojpeg0 (>= 1.5.2), libasound2 (>= 1.1.3), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 18 x86_32, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-18-04-amd64",
+            upload_directory: "www/ubuntu-18-04/"
+          }
+        - {
+            name: "DEB Ubuntu 20.04 x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu2004:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.31), libsdl2-2.0-0 (>= 2.0.10), libpng16-16 (>= 1.6.37), libjpeg-turbo8 (>= 2.0.3) | libturbojpeg0 (>= 2.0.3), libasound2 (>= 1.2.2), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 20 x86_32, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-20-04-amd64",
+            upload_directory: "www/ubuntu-20-04/"
+          }
+        - {
+            name: "DEB Ubuntu 20.04 arm64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu2004-arm64-cross:latest",
+            cross: true,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=arm64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.31), libsdl2-2.0-0 (>= 2.0.10), libpng16-16 (>= 1.6.37), libjpeg-turbo8 (>= 2.0.3) | libturbojpeg0 (>= 2.0.3), libasound2 (>= 1.2.2), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\" \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_linux_gcc_toolchain_arm64.cmake",
+
+            deps_cmdline: "echo 'Ubuntu 20 arm64, cross from x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-20-04-aarch64",
+            upload_directory: "www/ubuntu-20-04/"
+          }
+        - {
+            name: "DEB Ubuntu 20.04 armhf",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu2004-armhf-cross:latest",
+            cross: true,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=armhf \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.31), libsdl2-2.0-0 (>= 2.0.10), libpng16-16 (>= 1.6.37), libjpeg-turbo8 (>= 2.0.3) | libturbojpeg0 (>= 2.0.3), libasound2 (>= 1.2.2), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\" \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_linux_gcc_toolchain_armhf.cmake",
+
+            deps_cmdline: "echo 'Ubuntu 20 armhf, cross from x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-20-04-armhf",
+            upload_directory: "www/ubuntu-20-04/"
+          }
+        - {
+            name: "DEB Ubuntu 22.04 x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu2204:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.35), libsdl2-2.0-0 (>= 2.0.20), libpng16-16 (>= 1.6.37), libjpeg-turbo8 (>= 2.1.2) | libturbojpeg0 (>= 2.1.2), libasound2 (>= 1.2.6), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 22 x86_32, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-22-04-amd64",
+            upload_directory: "www/ubuntu-22-04/"
+          }
+        - {
+            name: "DEB Ubuntu 22.04 aarch64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu2204-arm64-cross:latest",
+            cross: true,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=arm64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.35), libsdl2-2.0-0 (>= 2.0.20), libpng16-16 (>= 1.6.37), libjpeg-turbo8 (>= 2.1.2) | libturbojpeg0 (>= 2.1.2), libasound2 (>= 1.2.6), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\" \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_linux_gcc_toolchain_arm64.cmake",
+
+            deps_cmdline: "echo 'Ubuntu 22 arm64, cross from x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-22-04-aarch64",
+            upload_directory: "www/ubuntu-22-04/"
+          }
+        - {
+            name: "DEB Ubuntu 24.04 x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-ubuntu2404:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.38), libsdl2-2.0-0 (>= 2.30.0), libpng16-16 (>= 1.6.43), libjpeg-turbo8 (>= 2.1.5), libasound2 (>= 1.2.10), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Ubuntu 24 x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "ubuntu-24-04-amd64",
+            upload_directory: "www/ubuntu-24-04/"
+          }
+        - {
+            name: "DEB Debian 13 (Trixie) x86_64",
+            os: ubuntu-latest,
+            container: "ghcr.io/thextech/wohlnet-ci-debian13:latest",
+            cross: false,
+
+            extra_options: "-DPGE_SHARED_SDLMIXER=OFF -DUSE_SYSTEM_SDL2=ON -DUSE_FREEIMAGE_SYSTEM_LIBS=ON \
+            -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=MinSizeRel \
+            -DTHEXTECH_PACKAGE_NAME=\"thextech-bin\" \
+            -DTHEXTECH_INSTALLER_PACKAGE_NAME=\"thextech-bin\" \
+            -DCPACK_GENERATOR=DEB \
+            -DCPACK_DEBIAN_PACKAGE_HOMEPAGE=\"https://wohlsoft.ru\" \
+            -DCPACK_DEBIAN_PACKAGE_RELEASE=${GITHUB_RUN_NUMBER} \
+            -DCPACK_DEBIAN_PACKAGE_ARCHITECTURE=amd64 \
+            -DCPACK_DEBIAN_PACKAGE_DEPENDS=\"libc6 (>= 2.38), libsdl2-2.0-0 (>= 2.30.0), libpng16-16 (>= 1.6.43), libturbojpeg0 (>= 2.1.5), libasound2 (>= 1.2.10), libpulse0\" \
+            -DCPACK_DEBIAN_PACKAGE_DESCRIPTION=\"TheXTech - the modern C++ port and successor of the SMBX engine\"",
+
+            deps_cmdline: "echo 'Debian 13 Trixie x86_64, everything pre-installed'",
+
+            executable_name: "thextech",
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            executable_name_suffix: "",
+            package_filename_suffix: "debian-13-trixie-amd64",
+            upload_directory: "www/debian-13/"
+          }
+
+    steps:
+    - name: Host info
+      shell: bash
+      run: |
+        uname -a
+        cat /proc/cpuinfo
+
+    - name: Check for the upload support
+      id: upload-check
+      shell: bash
+      run: |
+        if [[ "${{ secrets.builds_login }}" != '' && \
+              "${{ secrets.builds_password }}" != '' && \
+              "${{ secrets.builds_host }}" != '' ]]; then
+          echo "available=true" >> $GITHUB_OUTPUT;
+        else
+          echo "available=false" >> $GITHUB_OUTPUT;
+        fi
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.deps_cmdline }}" ]]; then
+          eval ${{ matrix.config.deps_cmdline }}
+        fi
+        cmake --version
+
+    - uses: TheXTech/checkout@v0.1
+
+    - uses: TheXTech/branch-name@v0.1
+
+    - name: Pull submodules
+      shell: bash
+      run: |
+        git submodule update --init --recursive
+
+    - name: Configure
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+          echo "PATH environment: ${PATH}"
+        fi
+        if [[ "${{ secrets.DISCORD_APP_ID }}" != '' ]]; then
+          LOCAL_EXTRA_SETUP="-DTHEXTECH_ENABLE_DISCORD_RPC=ON -DTHEXTECH_DISCORD_APPID=\"${{ secrets.DISCORD_APP_ID }}\""
+        fi
+        cmake -B build -G "${{ matrix.config.generator }}" -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} ${{ matrix.config.extra_options }} ${LOCAL_EXTRA_SETUP} .
+
+    - name: Build
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+        export MAKEFLAGS=--keep-going
+        cmake --build build --config ${{ matrix.config.build_type }} --parallel 3
+
+    - name: List dependent libraries
+      if: success() && runner.os == 'Linux'
+      shell: bash
+      run: |
+        file build/output/bin/${{ matrix.config.executable_name }}
+        if [[ "${{ matrix.config.cross}}" != true ]]; then
+            ldd build/output/bin/${{ matrix.config.executable_name }}
+        fi
+
+    - name: Create DEB packages
+      shell: bash
+      id: create_package
+      if: success()
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+        cd build
+        cpack .
+        mv *.deb thextech-bin-${{ matrix.config.package_filename_suffix }}-${BRANCH_NAME}.deb
+        cd ..
+
+    - name: Upload artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      continue-on-error: true
+      with:
+        path: build/*.deb
+        name: TheXTech ${{ matrix.config.name }} ${{ matrix.config.build_type }}
+
+    - name: Deploy to builds.wohlsoft.ru
+      if: steps.create_package.outcome == 'success' && github.event_name != 'pull_request' && steps.upload-check.outputs.available == 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+        UPLOAD_LIST="set ssl:verify-certificate no;"
+        for q in ./build/*.deb; do
+            UPLOAD_LIST="${UPLOAD_LIST} put -O ${{ matrix.config.upload_directory }} $q;"
+        done
+        lftp -e "${UPLOAD_LIST} exit" -u ${{ secrets.builds_login }},${{ secrets.builds_password }} ${{ secrets.builds_host }}
+
+    - name: List Build Directory
+      if: always()
+      shell: bash
+      run: |
+        git status
+        ls -lR build

@@ -1,0 +1,50 @@
+# Qt-es
+
+*.o
+*.obj
+
+*.pro.user
+*.pro.user.*
+*.qbs.user
+*.qbs.user.*
+*.error
+CMakeLists.txt.user*
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+Makefile
+Makefile.*
+build
+*-build-*
+*build-*
+.qmake.stash
+
+# ignore Qt-Makefile
+*.Debug
+*.Release
+
+#Temp files of LibreOffice
+.~lock.*
+
+#Notepad++ Backup files
+*.bak
+
+*.directory
+
+/build/*
+/build17/*
+/msvc-build/*
+/.vs/*
+
+#CMake stuff
+CMakeFiles
+CMakeCache.txt
+cmake_install.cmake
+CMakeSettings.json
+
+# libSDL2 must not be included here since it will be fetched separately
+/libSDL2/
+
+.idea/*
+.DS_Store
+.vscode/

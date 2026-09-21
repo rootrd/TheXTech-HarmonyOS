@@ -1,0 +1,6 @@
+{
+  global:
+    thetech_main;
+  local:
+    *;
+};

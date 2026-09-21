@@ -1,0 +1,304 @@
+def buildAsLibrary = project.hasProperty('BUILD_AS_LIBRARY');
+def buildAsApplication = !buildAsLibrary
+if (buildAsApplication) {
+    apply plugin: 'com.android.application'
+} else {
+    apply plugin: 'com.android.library'
+}
+
+def release_store_password = System.env.RELEASE_STORE_PASSWORD
+def release_key_password = System.env.RELEASE_KEY_PASSWORD
+def release_key_alias = System.env.RELEASE_KEY_ALIAS
+def pin_alias = System.env.PIN_ALIAS
+def db_pass_alias = System.env.DB_PASS_ALIAS
+
+def getGitHash() {
+    def gitExec = providers.exec {
+        commandLine('git', 'rev-parse', '--short', 'HEAD')
+    }.standardOutput.asText.get()
+    return gitExec.trim()
+}
+
+def getGitBranch() {
+    def gitExec = providers.exec {
+        commandLine('git', 'rev-parse', '--abbrev-ref', 'HEAD')
+    }.standardOutput.asText.get()
+    return gitExec.trim()
+}
+
+def parseVersion(verNum) {
+    def cmakeVersion = file('../../version.cmake')
+
+    if (cmakeVersion.canRead()) {
+        def input = new FileInputStream(cmakeVersion)
+        def rawVersion = input.getText()
+
+        def verMajorEx      = ~/(?m)THEXTECH_VERSION_1 (\d+)/
+        def verMajorM       = verMajorEx.matcher(rawVersion)
+        verNum[0]           = verMajorM[0][1].toInteger()
+
+        def verMinorEx      = ~/(?m)THEXTECH_VERSION_2 (\d+)/
+        def verMinorM       = verMinorEx.matcher(rawVersion)
+        verNum[1]           = verMinorM[0][1].toInteger()
+
+        def verRevisionEx   = ~/(?m)THEXTECH_VERSION_3 (\d+)/
+        def verRevisionM    = verRevisionEx.matcher(rawVersion)
+        verNum[2]           = verRevisionM[0][1].toInteger()
+
+        def verPatchEx      = ~/(?m)THEXTECH_VERSION_4 (\d+)/
+        def verPatchM       = verPatchEx.matcher(rawVersion)
+        verNum[3]           = verPatchM[0][1].toInteger()
+
+        def verRelEx        = ~/(?m)THEXTECH_VERSION_REL "(-?\w*)"/
+        def verRelM         = verRelEx.matcher(rawVersion)
+        verNum[5]           = verRelM[0][1]
+
+        return verNum
+    } else {
+        throw new GradleException("Can't read ../../version.cmake file")
+    }
+}
+
+def cmakeToVersionCode(verNum) {
+    def ret = ""
+
+    ret += verNum[0].toString()
+    ret += "." + verNum[1].toString()
+    if (verNum[2] > 0 || verNum[3] > 0) {
+        ret += "." + verNum[2].toString()
+        if (verNum[3] > 0) {
+            ret += "." + verNum[3].toString()
+        }
+    }
+
+    if (verNum[5] != "") {
+        ret += verNum[5]
+    }
+
+    ret += " #" + getGitHash()
+
+    return ret
+}
+
+static def cmakeToClearVersionCode(verNum) {
+    def ret = ""
+
+    ret += verNum[0].toString()
+    ret += "." + verNum[1].toString()
+    if (verNum[2] > 0 || verNum[3] > 0) {
+        ret += "." + verNum[2].toString()
+        if (verNum[3] > 0) {
+            ret += "." + verNum[3].toString()
+        }
+    }
+
+    if (verNum[5] != "") {
+        ret += verNum[5]
+    }
+
+    return ret
+}
+
+def verNum = [
+    0: 0, // major
+    1: 0, // minor
+    2: 0, // revision
+    3: 0, // patch
+    4: 0, // CI build number
+    5: "" // release type
+]
+
+parseVersion(verNum)
+def xTechBranchOrig = getGitBranch()
+def xTechBranch = xTechBranchOrig.replace('.', '').replace('-', '')
+def xTechVersionString = cmakeToVersionCode(verNum)
+def xTechVersionStringClear = cmakeToClearVersionCode(verNum)
+def xTechVersionType = verNum[5]
+def xTechVersionNumber = (verNum[0] * 1000000) + (verNum[1] * 10000) + (verNum[2] * 100) + verNum[3]
+
+println "Project version: " + xTechVersionString + " (Clear version: " + xTechVersionStringClear + ", version code: " + xTechVersionNumber.toString()
+
+android {
+    compileSdkVersion 36
+
+    // Note: The NDK 23 is SIGNIFICANTLY important, because of the support for non-NEON and older Android versions
+    //       The NDK 24 removes the support for Android 4.1, 4.2, and 4.3.
+    //       See details: https://github.com/android/ndk/wiki/Changelog-r24
+    ndkVersion = "23.2.8568313"
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    dependenciesInfo {
+        // Disables dependency metadata when building APKs.
+        includeInApk = false
+        // Disables dependency metadata when building Android App Bundles.
+        includeInBundle = false
+    }
+
+    defaultConfig {
+        if (buildAsApplication) {
+            applicationId "ru.wohlsoft.thextech"
+        }
+
+        minSdkVersion 16
+        targetSdkVersion 36
+
+        versionName xTechVersionString
+        versionCode xTechVersionNumber
+
+        externalNativeBuild {
+            cmake {
+                abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                arguments "-DANDROID_PLATFORM=16", "-DANDROID_STL=c++_static"
+            }
+        }
+        ndk{
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+        }
+    }
+
+    signingConfigs {
+        releaseci {
+            storeFile file("../release-key.jks")
+            storePassword = release_store_password
+            keyAlias = release_key_alias
+            keyPassword = release_key_password
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+
+            if(xTechVersionType == "-dev") {
+                applicationIdSuffix = '.dev.' + xTechBranch
+                android.sourceSets.release.res.srcDirs += project.projectDir.toString() + '/icon/devel'
+                manifestPlaceholders.dstAppName = "TheXTech DEV [" + xTechBranchOrig + "]"
+            } else {
+                android.sourceSets.release.res.srcDirs += project.projectDir.toString() + '/icon/main'
+                manifestPlaceholders.dstAppName = "@string/app_name"
+            }
+        }
+        releaseci {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            buildConfigField "String", "PIN_ALIAS", "\"$pin_alias\""
+            buildConfigField "String", "DB_PASS_ALIAS", "\"$db_pass_alias\""
+            signingConfig = signingConfigs.releaseci
+
+            if(xTechVersionType == "-dev") {
+                applicationIdSuffix = '.dev.' + xTechBranch
+                android.sourceSets.releaseci.res.srcDirs += project.projectDir.toString() + '/icon/devel'
+                manifestPlaceholders.dstAppName = "TheXTech DEV [" + xTechBranchOrig + "]"
+            } else {
+                android.sourceSets.releaseci.res.srcDirs += project.projectDir.toString() + '/icon/main'
+                manifestPlaceholders.dstAppName = "@string/app_name"
+            }
+        }
+        debug {
+            applicationIdSuffix '.debug'
+            versionNameSuffix '-DEVDEBUG'
+            manifestPlaceholders.dstAppName = "TheXTech [DEBUG]"
+            debuggable true
+            android.sourceSets.debug.res.srcDirs += project.projectDir.toString() + '/icon/debug'
+        }
+    }
+
+    flavorDimensions = ["dist"]
+    productFlavors {
+        apk {
+            dimension "dist"
+            isDefault = true
+        }
+        fdroid {
+            dimension "dist"
+            externalNativeBuild {
+                cmake {
+                    arguments += ["-DTHEXTECH_NO_BUILD_DATE=ON", "-DFDROID_BUILD=TRUE", "-DOVERRIDE_GIT_BRANCH=\"<fdroid>\"", "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON"]
+                }
+            }
+
+            versionName = xTechVersionStringClear
+
+            if(project.hasProperty('applicationIdSuffix')) {
+                applicationIdSuffix += '.fdroid'
+            } else {
+                applicationIdSuffix = '.fdroid'
+            }
+        }
+    }
+
+    println "Resource paths per config:"
+    println "Main: " + android.sourceSets.main.res.srcDirs
+    println "Debug: " + android.sourceSets.debug.res.srcDirs
+    println "Release: " + android.sourceSets.release.res.srcDirs
+    println "Release-CI: " + android.sourceSets.releaseci.res.srcDirs
+
+    lint {
+        abortOnError = false
+    }
+    namespace = 'ru.wohlsoft.thextech'
+
+    if (!project.hasProperty('EXCLUDE_NATIVE_LIBS')) {
+        sourceSets {
+            main {
+                jniLibs.srcDirs += "jniLibs"
+            }
+            debug {
+                jniLibs.srcDirs += "jniLibs/debug"
+            }
+            release {
+                jniLibs.srcDirs += ["jniLibs/release", "jniLibs/minsizerel"]
+            }
+            releaseci {
+                jniLibs.srcDirs += ["jniLibs/release", "jniLibs/minsizerel"]
+            }
+        }
+        externalNativeBuild {
+            cmake {
+                path "../../CMakeLists.txt"
+            }
+        }
+    }
+
+
+    if (buildAsLibrary) {
+        libraryVariants.all { variant ->
+            variant.outputs.each { output ->
+                def outputFile = output.outputFile
+                if (outputFile != null && outputFile.name.endsWith(".aar")) {
+                    def fileName = "ru.wohlsoft.thextech.aar";
+                    output.outputFile = new File(outputFile.parent, fileName);
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'jniLibs')
+    //noinspection GradleDependency: the version 1.6.1 is last that support minSDK 16, newer version will require MinSDK 21
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    //noinspection GradleDependency: the version 2.1.4 is last that support minSDK 16, newer version will require MinSDK 21
+    implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
+    def lifecycle_version = "2.6.2"
+    //noinspection GradleDependency: the version 2.6.2 is last that support minSDK 16, newer version will require MinSDK 19
+    implementation "androidx.lifecycle:lifecycle-viewmodel:$lifecycle_version"
+    //noinspection GradleDependency
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycle_version"
+    //noinspection GradleDependency: the version 1.11.0 is last that support minSDK 16, newer version will require MinSDK 19
+    implementation 'com.google.android.material:material:1.11.0'
+    implementation 'androidx.preference:preference:1.2.1'
+//    constraints {
+//        // Workaround to fix the build: https://dev.to/retyui/fix-react-native-android-builds-duplicate-class-kotlincollections-found-in-modules-jetified-kotlin-stdlib-180-2ca7
+//        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.0") {
+//            because("kotlin-stdlib-jdk7 is now a part of kotlin-stdlib")
+//        }
+//        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.0") {
+//            because("kotlin-stdlib-jdk8 is now a part of kotlin-stdlib")
+//        }
+//    }
+}

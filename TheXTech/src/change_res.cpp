@@ -1,0 +1,368 @@
+/*
+ * TheXTech - A platform game engine ported from old source code for VB6
+ *
+ * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
+ * Copyright (c) 2020-2026 Vitaly Novichkov <admin@wohlnet.ru>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "globals.h"
+#include "config.h"
+#include "change_res.h"
+#include "load_gfx.h"
+#include "graphics.h"
+#include "sound.h"
+#include "game_main.h"
+#include "message.h"
+#include "main/screen_asset_pack.h"
+#include "core/render.h"
+#include "core/window.h"
+#include "core/render.h"
+#ifdef __EMSCRIPTEN__
+#include "core/events.h"
+#endif
+
+void SyncSysCursorDisplay()
+{
+    bool hide_cursor = false;
+
+    // hide cursor in fullscreen
+    if(XWindow::isFullScreen())
+        hide_cursor = true;
+
+    // hide cursor in game states that have own cursor
+    if(GameMenu || MagicHand || LevelEditor || ScreenAssetPack::g_LoopActive)
+        hide_cursor = true;
+
+    // hide cursor in pause states that have own cursor
+    if(GamePaused == PauseCode::Options || GamePaused == PauseCode::DropAdd || GamePaused == PauseCode::TextEntry)
+        hide_cursor = true;
+
+    if(hide_cursor)
+    {
+        XWindow::setCursor(CURSOR_NONE);
+        XWindow::showCursor(0);
+    }
+    else
+    {
+        XWindow::setCursor(CURSOR_DEFAULT);
+        XWindow::showCursor(1);
+    }
+}
+
+void SetOrigRes()
+{
+    XWindow::setFullScreen(false);
+
+#ifndef __EMSCRIPTEN__
+    if(g_config.scale_mode == Config_t::SCALE_FIXED_05X)
+        XWindow::setWindowSize(XRender::TargetW / 2, XRender::TargetH / 2);
+    else if(g_config.scale_mode == Config_t::SCALE_FIXED_2X)
+        XWindow::setWindowSize(XRender::TargetW * 2, XRender::TargetH * 2);
+    else if(g_config.scale_mode == Config_t::SCALE_FIXED_3X)
+        XWindow::setWindowSize(XRender::TargetW * 3, XRender::TargetH * 3);
+    else
+        XWindow::setWindowSize(XRender::TargetW, XRender::TargetH);
+#endif
+
+#ifdef __EMSCRIPTEN__
+    XEvents::eventResize();
+#endif
+
+    if(LoadingInProcess)
+        UpdateLoad();
+
+    SyncSysCursorDisplay();
+}
+
+void ChangeRes(int, int, int, int)
+{
+    XWindow::setFullScreen(true);
+
+    if(LoadingInProcess)
+        UpdateLoad();
+
+    SyncSysCursorDisplay();
+}
+
+//void SaveIt(int ScX, int ScY, int ScC, int ScF, std::string ScreenChanged)
+//{
+
+//}
+
+void UpdateInternalRes()
+{
+    // bool ignore_compat = LevelEditor || (GameMenu && g_config.speedrun_mode.m_set < ConfigSetLevel::cmdline);
+    bool ignore_compat = LevelEditor;
+
+    int req_w = g_config.internal_res.m_value.first;
+    int req_h = g_config.internal_res.m_value.second;
+
+#ifndef PGE_MIN_PORT
+    if(l_screen->Type == ScreenTypes::Quad && g_config.internal_res_4p.m_value.first != 0)
+    {
+        req_w = g_config.internal_res_4p.m_value.first;
+        req_h = g_config.internal_res_4p.m_value.second;
+        ignore_compat = true;
+    }
+#endif
+
+    // use the correct canonical screen's resolution here
+    int canon_w = l_screen->canonical_screen().W;
+    int canon_h = l_screen->canonical_screen().H;
+
+    if(!g_config.allow_multires && !ignore_compat)
+    {
+        if((req_w != 0 && req_w < canon_w) || (req_h != 0 && req_h < canon_h))
+        {
+            req_w = canon_w;
+            req_h = canon_h;
+        }
+    }
+
+    if(!XRender::is_nullptr() && (req_w == 0 || req_h == 0))
+    {
+        int int_w, int_h, orig_int_h;
+
+        XRender::getRenderSize(&int_w, &int_h);
+        orig_int_h = int_h;
+
+        // set internal height first
+        if(req_h != 0)
+        {
+            int_h = req_h;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_FIXED_05X)
+        {
+            int_h *= 2;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_FIXED_2X)
+        {
+            int_h /= 2;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_FIXED_3X)
+        {
+            int_h /= 3;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_DYNAMIC_INTEGER)
+        {
+            if(int_h >= 600)
+            {
+                // constrains height to be in the 600-720p range
+                int scale_factor = int_h / 600;
+                int_h /= scale_factor;
+            }
+        }
+
+        // minimum height constraint
+        if(int_h < 320)
+            int_h = 320;
+
+        // maximum height constraint
+        if(int_h > 720 && req_h <= 720)
+            int_h = 720;
+
+        // now, set width based on height and scaling mode
+        if(g_config.scale_mode == Config_t::SCALE_FIXED_05X)
+        {
+            int_w *= 2;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_FIXED_1X)
+        {
+            // keep as-is
+            // int_w = int_w;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_FIXED_2X)
+        {
+            int_w /= 2;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_FIXED_3X)
+        {
+            int_w /= 3;
+        }
+        else if(g_config.scale_mode == Config_t::SCALE_DYNAMIC_INTEGER)
+        {
+            int scale_factor = orig_int_h / int_h;
+            if(scale_factor == 0)
+            {
+                // keep as-is
+                // int_w = int_w;
+            }
+            else if(int_w / scale_factor >= 800)
+            {
+                int_w /= scale_factor;
+            }
+            else
+            {
+                // scale based on width
+                int scale_factor = int_w / 800;
+                if(scale_factor != 0)
+                    int_w /= scale_factor;
+
+                // rescale the height if possible
+                if(scale_factor != 0 && req_h == 0)
+                {
+                    int_h = orig_int_h / scale_factor;
+                    if(int_h < 600)
+                        int_h = 600;
+                    if(int_h > 720)
+                        int_h = 720;
+                }
+            }
+        }
+        else
+        {
+            int_w = (int_w * int_h) / orig_int_h;
+        }
+
+        // force >800x600 resolution if required
+        if(!g_config.allow_multires && !ignore_compat)
+        {
+            if(int_w < canon_w)
+            {
+                int_h = (int_h * canon_w) / int_w;
+                int_w = canon_w;
+                if(int_h > 720)
+                    int_h = 720;
+            }
+
+            if(int_h < canon_h)
+            {
+                int_w = (int_w * canon_h) / int_h;
+                int_h = canon_h;
+            }
+        }
+
+        // minimum width constraint
+        if(int_w < 480)
+            int_w = 480;
+
+        // maximum 2.4 (cinematic) aspect ratio
+        if(int_w > int_h * 24 / 10)
+            int_w = int_h * 24 / 10;
+
+        // force even dimensions
+        int_w -= int_w & 1;
+        int_h -= int_h & 1;
+
+        XRender::TargetW = int_w;
+        XRender::TargetH = int_h;
+    }
+    else
+    {
+        XRender::TargetW = req_w;
+        XRender::TargetH = req_h;
+
+        if(XRender::TargetW == 0)
+            XRender::TargetW = (XRender::TargetH * 16 / 9) & ~1;
+
+        if(XRender::TargetH == 0)
+        {
+            XRender::TargetW = 1280;
+            XRender::TargetH = 720;
+        }
+    }
+
+    if(LevelEditor || MagicHand)
+    {
+        XRender::TargetW = SDL_max(XRender::TargetW, 640);
+        XRender::TargetH = SDL_max(XRender::TargetH, 480);
+    }
+
+    int new_CameraOverscanX = (g_config.allow_multires || ignore_compat) ? XRender::TargetCameraOverscanX : 0;
+    XRender::TargetW += new_CameraOverscanX * 2;
+
+    // DONE: above should tweak render target resolution. This should tweak game's screen resolution.
+    int new_ScreenW, new_ScreenH;
+    if(!GameMenu && !GameOutro && !LevelEditor && !BattleMode && g_VanillaCam)
+    {
+        XRender::TargetW = SDL_max(XRender::TargetW, canon_w);
+        XRender::TargetH = SDL_max(XRender::TargetH, canon_h);
+        new_ScreenW = canon_w;
+        new_ScreenH = canon_h;
+    }
+    else if(ignore_compat || (g_config.allow_multires && g_config.dynamic_camera_logic))
+    {
+        new_ScreenW = XRender::TargetW;
+        new_ScreenH = XRender::TargetH;
+    }
+    else if(g_config.allow_multires)
+    {
+        new_ScreenW = SDL_min(XRender::TargetW, canon_w);
+        new_ScreenH = SDL_min(XRender::TargetH, canon_h);
+    }
+    else
+    {
+        new_ScreenW = canon_w;
+        new_ScreenH = canon_h;
+    }
+
+    if(l_screen->W != new_ScreenW)
+        XMessage::PushMessage({XMessage::Type::screen_w, (uint8_t)(new_ScreenW / 256), (uint8_t)(new_ScreenW % 256)});
+    if(l_screen->H != new_ScreenH)
+        XMessage::PushMessage({XMessage::Type::screen_h, (uint8_t)(new_ScreenH / 256), (uint8_t)(new_ScreenH % 256)});
+    if(l_screen->CameraOverscanX != new_CameraOverscanX)
+        XMessage::PushMessage({XMessage::Type::camera_overscan_x, 0, (uint8_t)new_CameraOverscanX});
+    if(XRender::is_nullptr() || !GameIsActive)
+        return;
+
+    XRender::updateViewport();
+
+    // recenter the game menu graphics
+    if(GameMenu && (l_screen->W != new_ScreenW || l_screen->H != new_ScreenH))
+    {
+        l_screen->W = new_ScreenW;
+        l_screen->H = new_ScreenH;
+
+        SetupScreens();
+        CenterScreens();
+        GameMenu = false;
+        GetvScreenAverage(Screens[0].vScreen(1));
+        if(!Screens[0].is_canonical())
+            GetvScreenAverage(Screens[0].canonical_screen().vScreen(1));
+        GameMenu = true;
+    }
+
+    // disable world map qScreen if active
+    if(LevelSelect && qScreen)
+        qScreen = false;
+}
+
+void UpdateWindowRes()
+{
+    if(XWindow::is_nullptr() || XWindow::isFullScreen() || XWindow::isMaximized())
+        return;
+
+    int h = g_config.internal_res.m_value.second;
+    if(h == 0)
+        return;
+
+    int w = g_config.internal_res.m_value.first;
+
+    if(w == 0 && h == XRender::TargetH)
+        w = XRender::TargetW;
+    else if(w == 0)
+        return;
+
+    if(g_config.scale_mode == Config_t::SCALE_FIXED_05X)
+        XWindow::setWindowSize(w / 2, h / 2);
+    else if(g_config.scale_mode == Config_t::SCALE_FIXED_2X)
+        XWindow::setWindowSize(w * 2, h * 2);
+    else if(g_config.scale_mode == Config_t::SCALE_FIXED_3X)
+        XWindow::setWindowSize(w * 3, h * 3);
+    else
+        XWindow::setWindowSize(w, h);
+}
+

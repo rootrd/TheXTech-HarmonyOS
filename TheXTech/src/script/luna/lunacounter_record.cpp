@@ -1,0 +1,89 @@
+/*
+ * TheXTech - A platform game engine ported from old source code for VB6
+ *
+ * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
+ * Copyright (c) 2020-2026 Vitaly Novichkov <admin@wohlnet.ru>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "lunacounter_record.h"
+#include "lunacounter_util.h"
+#include <Logger/logger.h>
+
+#include "sdl_proxy/sdl_stdinc.h"
+
+
+void DeathRecord::Save(SDL_RWops *openfile)
+{
+    // Write character count
+    auto tempint = (uint32_t)m_levelName.size();
+    LunaCounterUtil::writeUIntLE(openfile, tempint);
+
+    // Write string data
+    int16_t nullt = 0;
+    SDL_RWwrite(openfile, m_levelName.data(), 1, tempint);
+    SDL_RWwrite(openfile, &nullt, 1, sizeof(int16_t));
+
+    // Write death count
+    LunaCounterUtil::writeIntLE(openfile, m_deaths);
+}
+
+bool DeathRecord::Load(SDL_RWops *openfile)
+{
+    size_t got;
+    char buf[151];
+    SDL_memset(buf, 0, 151);
+
+    // Read string length
+    uint32_t length;
+    uint32_t skip = 0;
+
+    got = LunaCounterUtil::readUIntLE(openfile, length);
+    if(got != sizeof(uint32_t))
+    {
+        pLogWarning("Demos counter Record: Failed to read the length of the level name");
+        return false;
+    }
+
+    if(length > 150)
+    {
+        skip = length - 150;
+        length = 150;
+    }
+
+    // Read string data
+    got = SDL_RWread(openfile, buf, 1, length);
+    if(got != length)
+    {
+        pLogWarning("Demos counter Record: Failed to read the level name");
+        return false;
+    }
+
+    if(skip > 0)
+        SDL_RWseek(openfile, skip, RW_SEEK_CUR);
+
+    m_levelName = std::string(buf);
+    SDL_RWseek(openfile, 2, RW_SEEK_CUR);
+
+    // Read death count
+    got = LunaCounterUtil::readIntLE(openfile, m_deaths);
+    if(got != sizeof(int32_t))
+    {
+        pLogWarning("Demos counter Record: Failed to read the counter value");
+        return false;
+    }
+
+    return true;
+}

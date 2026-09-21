@@ -1,0 +1,282 @@
+name: Windows CI
+
+on:
+  push:
+    branches:
+      - main
+      - stable*
+      - versus-ci
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "${{ matrix.config.name }} | ${{ matrix.config.build_type }}"
+    runs-on: ${{ matrix.config.os }}
+    container: ${{ matrix.config.container }}
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: "Windows - 64-bit",
+            os: windows-latest,
+
+            extra_options: "-DCMAKE_PREFIX_PATH=C:/WohlMinGWw64/mingw64 \
+            -DTHEXTECH_EXECUTABLE_NAME=thextech \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_windows_mingw_toolchain_x64.cmake",
+
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            extra_path: "/c/WohlMinGWw64/mingw64/bin",
+            executable_name_suffix: "-win64",
+            package_filename_suffix: "win64",
+            upload_directory: "www/win32/",
+            mingw_download: "https://wohlsoft.ru/docs/Software/MinGW/x86_64-12.2.0-release-posix-seh-rt_v10-rev1.7z", mingw_install_dir: "C:/WohlMinGWw64/",
+            ninja_download: "https://wohlsoft.ru/docs/Software/Ninja-Build/ninja-win.zip", ninja_install_dir: "C:/WohlMinGWw64/mingw64/bin",
+            lftp_download: "https://wohlsoft.ru/docs/Software/lftp-4.4.15.win64-openssl-1.0.1g.7z", lftp_install_dir: "C:/WohlMinGWw64/mingw64/"
+          }
+        - {
+            name: "Windows - 32-bit",
+            os: windows-latest,
+
+            extra_options: "-DCMAKE_PREFIX_PATH=C:/WohlMinGWw64/mingw32 \
+            -DTHEXTECH_EXECUTABLE_NAME=thextech \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_windows_mingw_toolchain_x32.cmake",
+
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            extra_path: "/c/WohlMinGWw64/mingw32/bin",
+            executable_name_suffix: "",
+            package_filename_suffix: "win32",
+            upload_directory: "www/win32/",
+            mingw_download: "https://wohlsoft.ru/docs/Software/MinGW/i686-12.2.0-release-posix-dwarf-rt_v10-rev1.7z", mingw_install_dir: "C:/WohlMinGWw64/",
+            ninja_download: "https://wohlsoft.ru/docs/Software/Ninja-Build/ninja-win.zip", ninja_install_dir: "C:/WohlMinGWw64/mingw32/bin",
+            lftp_download: "https://wohlsoft.ru/docs/Software/lftp-4.4.15.win64-openssl-1.0.1g.7z", lftp_install_dir: "C:/WohlMinGWw64/mingw32/"
+          }
+        - {
+            name: "Windows - 32-bit (legacy floats)",
+            os: windows-latest,
+
+            extra_options: "-DCMAKE_PREFIX_PATH=C:/WohlMinGWw64/mingw32 \
+            -DTHEXTECH_EXECUTABLE_NAME=thextech \
+            -DCMAKE_TOOLCHAIN_FILE=`pwd`/cmake/ci_windows_mingw_toolchain_x32.cmake \
+            -DTHEXTECH_FIXED_POINT=OFF",
+
+            generator: "Ninja",
+            build_type: "MinSizeRel",
+            extra_path: "/c/WohlMinGWw64/mingw32/bin",
+            executable_name_suffix: "",
+            package_filename_suffix: "win32-legacy-floats",
+            upload_directory: "www/win32/",
+            mingw_download: "https://wohlsoft.ru/docs/Software/MinGW/i686-12.2.0-release-posix-dwarf-rt_v10-rev1.7z", mingw_install_dir: "C:/WohlMinGWw64/",
+            ninja_download: "https://wohlsoft.ru/docs/Software/Ninja-Build/ninja-win.zip", ninja_install_dir: "C:/WohlMinGWw64/mingw32/bin",
+            lftp_download: "https://wohlsoft.ru/docs/Software/lftp-4.4.15.win64-openssl-1.0.1g.7z", lftp_install_dir: "C:/WohlMinGWw64/mingw32/"
+          }
+        - {
+            name: "Windows - ARM64",
+            os: windows-2022,
+            extra_options: "-A ARM64 -DTHEXTECH_EXECUTABLE_NAME=thextech",
+            generator: "Visual Studio 17 2022",
+            build_type: "MinSizeRel",
+            extra_path: "/c/WohlLFTP/bin",
+            executable_name_suffix: "-arm64",
+            package_filename_suffix: "arm64",
+            upload_directory: "www/win-arm/",
+            lftp_download: "https://wohlsoft.ru/docs/Software/lftp-4.4.15.win64-openssl-1.0.1g.7z", lftp_install_dir: "C:/WohlLFTP/"
+          }
+
+
+    steps:
+    - name: Check for the upload support
+      id: upload-check
+      shell: bash
+      run: |
+        if [[ "${{ secrets.builds_login }}" != '' && \
+              "${{ secrets.builds_password }}" != '' && \
+              "${{ secrets.builds_host }}" != '' ]]; then
+          echo "available=true" >> $GITHUB_OUTPUT;
+        else
+          echo "available=false" >> $GITHUB_OUTPUT;
+        fi
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.deps_cmdline }}" ]]; then
+          eval ${{ matrix.config.deps_cmdline }}
+        fi
+        cmake --version
+
+    - uses: TheXTech/checkout@v0.1
+
+    - uses: TheXTech/branch-name@v0.1
+
+
+    - name: Pull submodules
+      shell: bash
+      run: |
+        git submodule update --init --recursive
+
+    - name: Download MinGW
+      if: matrix.config.mingw_download
+      shell: bash
+      run: C:\\msys64\\usr\\bin\\wget.exe -d -nv -t 5 -O mingw.7z "${{ matrix.config.mingw_download }}"
+
+    - name: Extract MinGW
+      if: matrix.config.mingw_install_dir
+      shell: bash
+      run: |
+        7z x mingw.7z -o"${{ matrix.config.mingw_install_dir }}"
+
+    - name: Download Ninja
+      if: matrix.config.ninja_download
+      shell: bash
+      run: C:\\msys64\\usr\\bin\\wget.exe -d -nv -t 5 -O ninja.zip "${{ matrix.config.ninja_download }}"
+
+    - name: Extract Ninja
+      if: matrix.config.ninja_install_dir
+      shell: bash
+      run: |
+        7z x ninja.zip -o"${{ matrix.config.ninja_install_dir }}"
+
+    - name: Download LFTP
+      if: matrix.config.lftp_download
+      shell: bash
+      run: C:\\msys64\\usr\\bin\\wget.exe -d -nv -t 5 -O lftp.7z "${{ matrix.config.lftp_download }}"
+
+    - name: Extract LFTP
+      if: matrix.config.lftp_install_dir
+      shell: bash
+      run: |
+        7z x lftp.7z bin etc -o"${{ matrix.config.lftp_install_dir }}"
+
+    - name: Download SMBX assets
+      shell: bash
+      run: C:\\msys64\\usr\\bin\\wget.exe -d -nv -t 5 -O smbx13.7z "https://wohlsoft.ru/projects/TheXTech/_downloads/thextech-smbx13-assets-full.7z"
+
+    - name: Download AoD assets
+      shell: bash
+      run: C:\\msys64\\usr\\bin\\wget.exe -d -nv -t 5 -O aod.7z "https://wohlsoft.ru/projects/TheXTech/_downloads/thextech-adventure-of-demo-assets-full.7z"
+
+    - name: Unpack all assets
+      shell: bash
+      run: |
+        mkdir -p smbx13
+        cd smbx13
+        7z x ../smbx13.7z
+        cd ..
+        rm smbx13.7z
+        mkdir -p aod
+        cd aod
+        7z x ../aod.7z
+        cd ..
+        rm aod.7z
+
+    - name: Apply update to translations
+      shell: bash
+      run: |
+        ASSETS_ROOT1="$PWD/smbx13"
+        ASSETS_ROOT2="$PWD/aod"
+        cd .github/ci-helper
+        bash translate_update.sh "${ASSETS_ROOT1}"
+        bash translate_update.sh "${ASSETS_ROOT2}"
+        cd ../..
+
+    - name: Configure
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+          echo "PATH environment: ${PATH}"
+        fi
+        if [[ "${{ secrets.DISCORD_APP_ID }}" != '' ]]; then
+          LOCAL_EXTRA_SETUP="-DTHEXTECH_ENABLE_DISCORD_RPC=ON -DTHEXTECH_DISCORD_APPID=\"${{ secrets.DISCORD_APP_ID }}\""
+        fi
+        cmake -B build -G "${{ matrix.config.generator }}" -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} ${{ matrix.config.extra_options }} ${LOCAL_EXTRA_SETUP} .
+
+    - name: Build
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+        export MAKEFLAGS=--keep-going
+        cmake --build build --config ${{ matrix.config.build_type }} --parallel 3
+
+    - name: List dependent libraries
+      if: success() && runner.os == 'Linux'
+      shell: bash
+      run: |
+        file build/output/bin/thextech
+        ldd build/output/bin/thextech
+
+
+    - name: Create Package
+      if: success()
+      shell: bash
+      # ======================================= Adventures of Demo =======================================
+      # The side game about Demo and siblings from the A2XT universe by raocow and his fan community.
+      # ======================================= Super Mario Bros. X - a fan-game =======================================
+      # Was made in 2009 by Andrew Spinks "Redigit", and supported up to 2011 by it's original author.
+      run: |
+        bash .github/ci-helper/pack-game.sh \
+            "${{ runner.os }}" \
+            "thextech-adventures-of-demo" \
+            "advdemo${{ matrix.config.executable_name_suffix }}" \
+            "thextech-adventures-of-demo-${{ matrix.config.package_filename_suffix }}-${BRANCH_NAME}" \
+            "aod"
+
+        bash .github/ci-helper/pack-game.sh \
+            "${{ runner.os }}" \
+            "thextech-super-mario-bros-x" \
+            "smbx${{ matrix.config.executable_name_suffix }}" \
+            "thextech-super-mario-bros-x-${{ matrix.config.package_filename_suffix }}-${BRANCH_NAME}" \
+            "smbx13"
+
+        bash .github/ci-helper/pack-game.sh \
+            "${{ runner.os }}" \
+            "thextech-bin" \
+            "thextech${{ matrix.config.executable_name_suffix }}" \
+            "thextech-bin-${{ matrix.config.package_filename_suffix }}-${BRANCH_NAME}" \
+            "none"
+
+    - name: Upload artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      continue-on-error: true
+      with:
+        path: build/package/*.7z
+        name: ${{ matrix.config.name }} ${{ matrix.config.build_type }}
+
+    - name: Deploy to builds.wohlsoft.ru
+      if: success() && github.event_name != 'pull_request' && steps.upload-check.outputs.available == 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+          export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+        UPLOAD_LIST="set ssl:verify-certificate no;"
+        if [[ "${{ runner.os }}" == 'Windows' ]]; then
+            for q in ./build/package/*.7z; do
+                UPLOAD_LIST="${UPLOAD_LIST} put -O ${{ matrix.config.upload_directory }} $q;"
+            done
+        elif [[ "${{ runner.os }}" == 'Linux' ]]; then
+            for q in ./build/package/*.tar.gz; do
+                UPLOAD_LIST="${UPLOAD_LIST} put -O ${{ matrix.config.upload_directory }} $q;"
+            done
+        fi
+        lftp -e "${UPLOAD_LIST} exit" -u ${{ secrets.builds_login }},${{ secrets.builds_password }} ${{ secrets.builds_host }}
+
+    - name: List Build Directory
+      if: always()
+      shell: bash
+      run: |
+        git status
+        ls -lR build

@@ -1,0 +1,65 @@
+/*
+ * TheXTech - A platform game engine ported from old source code for VB6
+ *
+ * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
+ * Copyright (c) 2020-2026 Vitaly Novichkov <admin@wohlnet.ru>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#ifndef RENDEROP_STRING_H
+#define RENDEROP_STRING_H
+
+#include "renderop.h"
+#include "graphics.h"
+
+// String object to be rendered later
+class RenderStringOp final : public RenderOp
+{
+public:
+    // Quick ctor
+    RenderStringOp();
+
+    RenderStringOp(const std::string &str, int font_type, int X, int Y);
+
+    ~RenderStringOp() override;
+
+    void Draw(Renderer *renderer) override;
+
+    inline void* operator new(size_t size)
+    {
+        // Note: If you creating any chunks with a size bigger than current size, please increase it
+        SDL_assert_release(size < c_rAllocChunkSize);
+        auto *ret = g_rAlloc.Allocate(c_rAllocChunkSize);
+        return ret;
+    }
+
+    inline void operator delete(void* memory)
+    {
+        g_rAlloc.Free(memory);
+    }
+
+    // FIXME: Replace this with the string data index
+    // Every autocode should use the string index storage, and this thing won't be needed
+    char*  m_String = nullptr;
+    size_t m_StringSize = 0;
+    bool   m_StringDup = false;
+
+    int m_FontType;
+    int m_X;
+    int m_Y;
+    bool   sceneCoords;     // If true, x and y are scene coordinates
+};
+
+#endif // RENDEROP_STRING_H

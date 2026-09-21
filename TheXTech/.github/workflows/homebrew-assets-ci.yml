@@ -1,0 +1,181 @@
+name: Homebrew Assets CI
+
+on:
+  push:
+    branches:
+      - main
+      - stable*
+    paths:
+      - .github/workflows/homebrew-assets-ci.yml
+      - utils/convertkit/assets-convert-homebrew.py
+  pull_request:
+    branches:
+      - main
+    paths:
+      - .github/workflows/homebrew-assets-ci.yml
+      - utils/convertkit/assets-convert-homebrew.py
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.source.name }} for ${{ matrix.target.name }}
+    runs-on: ubuntu-latest
+    container: ${{ matrix.target.docker_image }}
+    env:
+        DEVKITPRO: /opt/devkitpro
+    strategy:
+      fail-fast: true
+      matrix:
+        target:
+        - {
+            name: "3DS",
+            id: "3ds",
+            docker_image: "devkitpro/devkitarm",
+            upload_directory: "www/3ds/"
+          }
+        - {
+            name: "Wii",
+            id: "wii",
+            docker_image: "devkitpro/devkitppc",
+            upload_directory: "www/wii/"
+          }
+        source:
+        # ======================================= Adventures of Demo =======================================
+        # The side game about Demo and siblings from the A2XT universe by raocow and his fan community.
+        - {
+            name: "Adventures of Demo",
+            id: "aod",
+            assets_url: "https://wohlsoft.ru/projects/TheXTech/_downloads/thextech-adventure-of-demo-assets-full.7z",
+          }
+        # ======================================= Super Mario Bros. X - a fan-game =======================================
+        # Was made in 2009 by Andrew Spinks "Redigit", and supported up to 2011 by it's original author.
+        - {
+            name: "Super Mario Bros. X",
+            id: "smbx13",
+            assets_url: "https://wohlsoft.ru/projects/TheXTech/_downloads/thextech-smbx13-assets-full.7z",
+          }
+    steps:
+    - name: Check for the upload support
+      id: upload-check
+      shell: bash
+      run: |
+        if [[ "${{ secrets.builds_login }}" != '' && \
+              "${{ secrets.builds_password }}" != '' && \
+              "${{ secrets.builds_host }}" != '' ]]; then
+          echo "available=true" >> $GITHUB_OUTPUT;
+        else
+          echo "available=false" >> $GITHUB_OUTPUT;
+        fi
+
+    - name: Resolve artifact filename
+      id: res
+      shell: bash
+      run: |
+        echo "filename=assets-${{ matrix.source.id }}-${{ matrix.target.id }}.zip" >> $GITHUB_OUTPUT;
+        echo "The target will be named: [assets-${{ matrix.source.id }}-${{ matrix.target.id }}.${{ matrix.target.package_ext }}]"
+
+    - name: Install Debian Dependencies
+      shell: bash
+      run: |
+        apt update
+        apt install -y build-essential cmake  \
+                       imagemagick ffmpeg     \
+                       python3                \
+                       p7zip-full             \
+                       zip                    \
+                       lftp
+
+    - uses: TheXTech/branch-name@v0.1
+
+
+    - name: Build and install spc2it Dependency
+      shell: bash
+      continue-on-error: true
+      run: |
+        git clone https://github.com/ds-sloth/spc2it ../spc2it
+        cd ../spc2it
+        mkdir build
+        cd build
+        cmake ..
+        make
+        cp spc2it /usr/bin/spc2it
+
+    - uses: TheXTech/checkout@v0.1
+
+    - name: Download assets
+      shell: bash
+      run: wget -d -nv -t 5 -O assets-source.7z "${{ matrix.source.assets_url }}"
+
+    - name: Unpack assets
+      shell: bash
+      run: |
+        mkdir -p assets/source
+        cd assets/source
+        7z x ../../assets-source.7z
+        cd ../..
+        rm assets-source.7z
+
+        mkdir -p package
+
+    - name: Apply update to translations
+      shell: bash
+      run: |
+        ASSETS_ROOT="$PWD/assets/source"
+        cd .github/ci-helper
+        bash translate_update.sh "${ASSETS_ROOT}"
+        cd ../..
+
+    - name: Convert assets
+      shell: bash
+      run: |
+        cd assets
+        python3 ../utils/convertkit/assets-convert-homebrew.py -t ${{ matrix.target.id }} source target
+
+    - name: Package for 3DS
+      if: matrix.target.id == '3ds'
+      shell: bash
+      run: |
+        mkromfs3ds assets/target package/${{ steps.res.outputs.filename }}.romfs
+        cd package
+        zip -9 "${{ steps.res.outputs.filename }}" "${{ steps.res.outputs.filename }}.romfs"
+        cd ..
+
+    - name: Package for Wii
+      if: matrix.target.id == 'wii'
+      shell: bash
+      run: |
+        cd assets/target
+        zip -9 -r "../../package/${{ steps.res.outputs.filename }}" .
+        cd ../..
+
+    - name: Upload artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      continue-on-error: true
+      with:
+        path: package/${{ steps.res.outputs.filename }}
+        name: ${{ matrix.source.name }} Assets (${{ matrix.target.name }})
+
+    - name: Deploy to builds.wohlsoft.ru
+      if: success() && github.event_name != 'pull_request' && steps.upload-check.outputs.available == 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        cd package
+
+        UPLOAD_LIST="set ssl:verify-certificate no;"
+        UPLOAD_LIST="${UPLOAD_LIST} put -O ${{ matrix.target.upload_directory }} ${{ steps.res.outputs.filename }};"
+
+        lftp -e "${UPLOAD_LIST} exit" -u ${{ secrets.builds_login }},${{ secrets.builds_password }} ${{ secrets.builds_host }}
+
+    - name: List Build Directory
+      if: always()
+      shell: bash
+      run: |
+        cd assets/target
+        pwd
+        ls -lR

@@ -1,0 +1,9 @@
+export const initRender: (surfaceId: string, width: number, height: number, gamePath: string, saveDir: string) => number;
+export const destroyRender: () => void;
+export const injectTouch: (action: number, x: number, y: number) => void;
+export const injectKey: (scancode: number, down: number) => void;
+export const injectGamepadButton: (button: number, down: number) => void;
+export const injectGamepadAxis: (axis: number, value: number) => void;
+export const getFps: () => number;
+export const prepareGameEnv: () => void;
+export const setGameRoot: (root: string, home: string) => void;

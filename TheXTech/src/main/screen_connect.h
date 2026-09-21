@@ -1,0 +1,35 @@
+#ifndef SCREEN_CONNECT_H
+
+#define SCREEN_CONNECT_H
+
+#include <array>
+
+// for maxLocalPlayers
+#include "../global_constants.h"
+
+namespace ConnectScreen
+{
+
+//! which characters have been requested
+extern std::array<uint8_t, maxLocalPlayers> g_charSelect;
+
+void MainMenu_Start(int minPlayers);
+void DropAdd_Start();
+void LegacyMenu_Start();
+
+void Render();
+
+// return values:
+// -1 back
+// 0 continue
+// 1 next
+int Logic();
+
+// used to track which characters
+//   were present in last case with
+//   SwapCharAllowed() true.
+void SaveChars();
+
+} // namespace ConnectScreen
+
+#endif // SCREEN_CONNECT_H

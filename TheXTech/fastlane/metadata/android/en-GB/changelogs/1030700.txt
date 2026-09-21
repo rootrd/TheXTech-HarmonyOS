@@ -1,0 +1,5 @@
+This is a large update. We worked long and hard on this update, and we finally ready to present this big update for you all! This update will be the biggest in TheXTech's history and features a huge set of features, bugfixes, and improvements.
+
+Thank you to @0lhi who served on our core development team for design and quality assurance from version v1.3.4 (2021) to v1.3.7 (2025). His contributions are much appreciated.
+
+Read more here: https://github.com/Wohlstand/TheXTech/releases/tag/v1.3.7

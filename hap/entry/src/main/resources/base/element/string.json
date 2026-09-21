@@ -1,0 +1,16 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "TheXTech game engine module"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "TheXTech main ability"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "TheXTech"
+    }
+  ]
+}

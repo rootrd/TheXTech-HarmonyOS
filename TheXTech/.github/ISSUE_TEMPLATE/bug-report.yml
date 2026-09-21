@@ -1,0 +1,162 @@
+name: Bug Report
+description: Create a report of the issue ocurred with the game during its use
+labels: ["NEW-BUG"]
+projects: ["TheXTech/1"]
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Describe the issue
+      description: A clear and concise description of what the bug.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bug_type
+    attributes:
+      label: A type of bug
+      description: |
+        How you would classify this bug by yourself?
+        * **Native bug** - The own bug of TheXTech itself that was never happen in the original SMBX.
+        * **Vanilla bug** - The bug of original SMBX that got being inherited by TheXTech during its initial creation.
+        * **Compatibility bug** - The deviation of behaviour from the original even with the strict compatibility mode (run the game with `--compat-level smbx13` command-line argument).
+
+        **Note:** The development team can classify this issue in a different way depending on the result of the analysis.
+      options:
+        - [Not specified]
+        - Native bug
+        - Vanilla bug
+        - Compatibility bug
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Does this issue happens always or randomly?
+      description: Is it possible to reproduce this issue easily, or it happens very rare?
+      options:
+        - Always happens
+        - Happens randomly, often
+        - Happens randomly, rare
+        - Happens very rare
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: What version of TheXtech you are using? You can see it in the title of the window.
+    validations:
+      required: true
+
+  - type: input
+    id: version_hash
+    attributes:
+      label: Version Hash
+      description: If you run a **DEVEL** version, please also tell the hash tag (like `#1A2BC3E`) that can be found in the window title or in the main menu at the right-bottom of the screen.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Platform
+      description: What the platform where you run the game?
+      options:
+        - [Not specified]
+        - Linux
+        - Windows
+        - macOS
+        - Android
+        - Haiku
+        - xBSD
+        - Web-browser (Emscripten)
+        - 3DS
+        - Wii
+        - Wii U
+        - Switch
+        - PS Vita
+        - Other (tell in the bug description)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: cpu
+    attributes:
+      label: Processor architecture
+      description: |
+        Which architecture your processor where you ran the game have?
+
+        * If you run the **Windows**, you can easily check your architecture (x86 32-bit, 64-bit, or "64-bit processor ARM"), you can open the properties of the "This computer" / "My computer".
+        * On **Linux** / **xBSD**, you can open the terminal and run the `uname -m` command to get the exact processor architecture.
+        * On **macOS**, just can open the "About this Mac" to see the architecture in the description. If you see in description such as 32-bit "Power PC" (PPC G3, PPC G4) or PPC G5 which is 64-bit Power PC, **Intel Core Solo, Core Duo (not 2 Duo!)** which are 32-bit i386, **Intel Core 2 Duo, Quad-Core, i3/i5/i7** which are 64-bit x86_64, and the **Apple M1/M2/M3/etc.** which is an ARM64).
+        * On **Android** you might want to use program such as AIDA64 where you can open the "CPU" list, and find the "Instructions set" paragraph where you can see exact processor architecture that your device runs.
+
+        **Note:** Some platforms do have one single architecture only, for example:
+        * **PSP** has the MIPS32.
+        * **3DS** and **Vita** has the ARM32/ARMv7.
+        * **Wii** and **Wii U** has the PPC32.
+        * **Switch** has the ARM64/AARCH64.
+      options:
+        - [Not specified / I don't know]
+        - x86_64 / x64 (64-bit x86)
+        - i386 / x86_32 (32-bit x86)
+        - ARM64 / AARCH64 (64-bit ARM)
+        - ARM32 / ARMv7 (32-bit ARM)
+        - PPC64LE (64-bit Power PC with Little-Endian)
+        - PPC64 (64-bit Power PC with Big-Endian)
+        - PPC32 (32-bit Power PC with Big-Endian)
+        - MIPS64 (32-bit MIPS)
+        - MIPS32 (64-bit MIPS)
+        - RISC-V
+        - WebAssembly (Emscripten)
+        - Other (tell in the bug description)
+    validations:
+      required: false
+
+  - type: textarea
+    id: log_file
+    attributes:
+      label: Log file (if presented)
+      description: |
+        Please upload the log file that have the `TheXTech_log_YYYY_MM_DD_HH_mm_ss.txt` name which can be found in the `logs` sub-directory in the game's user directory.
+    validations:
+      required: false
+
+  - type: textarea
+    id: example_case
+    attributes:
+      label: Example Case
+      description: |
+        Post a link to the level where the issue occurs:
+        *levelname.lvl* from `[Episode name](https://link.to.episode/)`
+        Even better: If you make a dedicated test level and attach it to your GitHub Post (pack it as `.zip` first, and then drag it and drop into this text area).
+    validations:
+      required: false
+
+  - type: textarea
+    id: recording
+    attributes:
+      label: Recording
+      description: Embed or add a link to a Recording here. If it's an in-game issue, you can use TheXTech's built-in GIF Recorder (Press F11 or F10 on macOS). If it's a crash, use a Screen Capture program such as OBS or vokoscreen.
+    validations:
+      required: false
+
+  - type: textarea
+    id: vanilla_recording
+    attributes:
+      label: Vanilla Recording
+      description: Not required, but if you can run SMBX 1.3 (or [use our Research Version](https://github.com/Wohlstand/smbx-experiments/releases) that will work better on Linux under Wine and has the built-in GIF recorder using the F11 key), it would be appreciated if you made a recording of whether the bug occurs here as well.
+    validations:
+      required: false
+
+  - type: textarea
+    id: misc_info
+    attributes:
+      label: Additional context
+      description: Add any other context that could be useful for solving the problem here. If your problem is tied to your Operating System, add it at the beginning of the Title ("[Windows] Windows Issue").
+    validations:
+      required: false

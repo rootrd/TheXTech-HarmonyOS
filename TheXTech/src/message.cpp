@@ -1,0 +1,317 @@
+/*
+ * TheXTech - A platform game engine ported from old source code for VB6
+ *
+ * Copyright (c) 2009-2011 Andrew Spinks, original VB6 code
+ * Copyright (c) 2020-2026 Vitaly Novichkov <admin@wohlnet.ru>
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include "controls.h"
+#include "message.h"
+#include "globals.h"
+#include "config.h"
+
+#include "graphics.h"
+#include "player.h"
+#include "main/cheat_code.h"
+#include "main/screen_pause.h"
+#include "main/screen_options.h"
+
+#include <Logger/logger.h>
+
+#ifdef THEXTECH_ENABLE_SDL_NET
+#   include "main/client_methods.h"
+#endif
+
+namespace XMessage
+{
+
+#ifdef THEXTECH_ENABLE_SDL_NET
+static std::vector<Message> s_message_submit_queue;
+#endif
+
+static std::vector<Message> s_message_vector;
+Session g_session;
+
+static Controls_t s_last_controls[maxNetplayPlayers + 1];
+
+void Handle(const Message& m)
+{
+#ifdef THEXTECH_ENABLE_SDL_NET
+    // server control messages
+    if(m.screen == 255)
+    {
+        if(m.type == Type::add_client)
+        {
+        }
+        else if(m.type == Type::drop_client)
+        {
+            Screen_t& screen = Screens[m.message];
+
+            // reset screen parameters
+            screen.W = 800;
+            screen.H = 600;
+            screen.CameraOverscanX = 0;
+            screen.two_screen_pref = MultiplayerPrefs::Dynamic;
+            screen.four_screen_pref = MultiplayerPrefs::Shared;
+            screen.canonical_screen().two_screen_pref = screen.two_screen_pref;
+            screen.canonical_screen().four_screen_pref = screen.four_screen_pref;
+
+            // drop players other than the last player
+            for(int p = screen.player_count - 1; p >= 0; p--)
+            {
+                // reassign last player to Screen 0
+                if(numPlayers == 1)
+                {
+                    Screens_DropPlayer(1);
+                    Screens_AssignPlayer(1, Screens[0]);
+                }
+                else
+                    DropPlayer(screen.players[p]);
+            }
+        }
+
+    }
+#endif // #ifdef THEXTECH_ENABLE_SDL_NET
+
+    if(m.screen >= maxNetplayClients)
+        return;
+
+    Screen_t& screen = Screens[m.screen];
+
+    if(m.type == Type::press || m.type == Type::release)
+    {
+        if(m.player >= maxLocalPlayers || m.message >= Controls::PlayerControls::n_buttons)
+            return;
+
+        auto& controls = s_last_controls[screen.players[m.player]];
+        bool& button = Controls::PlayerControls::GetButton(controls, m.message);
+        bool is_press = (m.type == Type::press);
+
+        button = is_press;
+    }
+    else if(m.type == Type::char_swap)
+    {
+        if(m.player >= screen.player_count || m.message < 1 || m.message > numCharacters || !SwapCharAllowed())
+            return;
+
+        SwapCharacter(screen.players[m.player], m.message);
+
+        if(LevelSelect && !GameMenu)
+            SetupPlayers();
+    }
+    else if(m.type == Type::add_player || m.type == Type::add_player_dead)
+    {
+        if(screen.player_count >= maxLocalPlayers || m.message < 1 || m.message > numCharacters)
+            return;
+
+        // after AddPlayer, numPlayers is always the new player
+        AddPlayer(m.message, screen);
+
+        // set the player to be dead if needed
+        if(m.type == Type::add_player_dead)
+        {
+            Player[numPlayers].Dead = true;
+            Player[numPlayers].Effect = PLREFF_NORMAL; // disable PLREFF_COOP_WINGS if it was enabled
+
+            // initialize ghost logic for player
+            int living = CheckNearestLiving(numPlayers);
+            if(living)
+            {
+                Player[numPlayers].Effect2 = -living;
+                Player[numPlayers].Location.X = Player[living].Location.X;
+                Player[numPlayers].Location.Y = Player[living].Location.Y;
+                Player[numPlayers].Section    = Player[living].Section;
+            }
+            else
+                Player[numPlayers].Effect2 = 0;
+        }
+    }
+    else if(m.type == Type::drop_player)
+    {
+        if(m.player >= screen.player_count)
+            return;
+
+        DropPlayer(screen.players[m.player]);
+    }
+    else if(m.type == Type::menu_action)
+    {
+        PauseScreen::g_pending_action = m.message;
+    }
+    else if(m.type == Type::shared_controls)
+    {
+        if(m.message == 0)
+            SharedPause = true;
+        else if(m.message == 1)
+            SharedPauseLegacy = true;
+        else if(m.message == 2)
+            SharedPauseForce = true;
+    }
+    else if(m.type == Type::enter_code)
+        run_cheat(m);
+    else if(m.type == Type::screen_w)
+    {
+        screen.W = m.player * 256 + m.message;
+    }
+    else if(m.type == Type::screen_h)
+    {
+        screen.H = m.player * 256 + m.message;
+    }
+    else if(m.type == Type::camera_overscan_x)
+    {
+        screen.CameraOverscanX = m.message;
+    }
+    else if(m.type == Type::multiplayer_prefs)
+    {
+        int two_screen_pref = m.player;
+        int four_screen_pref = m.message;
+
+        if(two_screen_pref > MultiplayerPrefs::Max_2P)
+            two_screen_pref = 0;
+
+        if(four_screen_pref > MultiplayerPrefs::Max_4P)
+            four_screen_pref = 0;
+
+        screen.two_screen_pref = two_screen_pref;
+        screen.four_screen_pref = four_screen_pref;
+
+        screen.canonical_screen().two_screen_pref = two_screen_pref;
+        screen.canonical_screen().four_screen_pref = four_screen_pref;
+
+        SetupScreens();
+        PlayersEnsureNearby(screen);
+    }
+    else if(m.type == Type::episode_option_change || m.type == Type::compat_session_tweak_change)
+        OptionsScreen::ChangeOption(m);
+}
+
+void InitSession()
+{
+    for(int A = 0; A <= maxNetplayPlayers; A++)
+        s_last_controls[A] = Controls_t();
+
+#ifdef THEXTECH_ENABLE_SDL_NET
+    Client_InitSession();
+#endif
+
+    UpdateConfig();
+}
+
+void EndSession()
+{
+#ifdef THEXTECH_ENABLE_SDL_NET
+    Client_EndSession();
+#endif
+}
+
+void Tick()
+{
+#ifdef THEXTECH_ENABLE_SDL_NET
+    if(g_session.active)
+    {
+        const auto* status = GetClientStatus();
+        if(status->client_state == CLIENT_HOST_IDLE && status->knock_knock)
+            ActivateHost();
+
+        // sync state with other clients here
+        if(XMessage::GetStatus() != XMessage::Status::local)
+            ClientFrameSync(s_message_submit_queue, s_message_vector);
+        // log state for future saving or syncing
+        else
+        {
+            g_session.current_frame++;
+
+            if(!s_message_submit_queue.empty())
+            {
+                g_session.history.push_back(msg_from_frame_no(Type::frame_begin, g_session.current_frame));
+
+                for(Message m : s_message_submit_queue)
+                {
+                    g_session.history.push_back(m);
+                    s_message_vector.push_back(m);
+                }
+
+                g_session.next_message = g_session.history.size();
+                s_message_submit_queue.clear();
+            }
+        }
+    }
+#endif
+
+    // update player controls based on message queue
+    for(Message m : s_message_vector)
+        Handle(m);
+    s_message_vector.clear();
+
+    int numPlayers_p = numPlayers;
+
+    // fix a bug affecting main menu dead mode
+    if(GameMenu || GameOutro)
+        numPlayers_p = maxLocalPlayers;
+
+    for(int A = 1; A <= numPlayers_p && A <= maxNetplayPlayers; A++)
+        Player[A].Controls = s_last_controls[A];
+}
+
+void PushMessage_Direct(Message message)
+{
+#ifdef THEXTECH_ENABLE_SDL_NET
+    if(g_session.active)
+    {
+        s_message_submit_queue.push_back(message);
+        return;
+    }
+#endif
+
+    s_message_vector.push_back(message);
+}
+
+void PushMessage(Message message)
+{
+    message.screen = l_screen - &Screens[0];
+    PushMessage_Direct(message);
+}
+
+void PushControls(int l_player_i, const Controls_t& controls)
+{
+    Controls_t& last_controls = Controls::g_RawControls[l_player_i];
+
+    Message m;
+    m.screen = l_screen - &Screens[0];
+    m.player = l_player_i;
+
+    for(uint8_t i = 0; i < Controls::PlayerControls::n_buttons; i++)
+    {
+        bool new_pressed = Controls::PlayerControls::GetButton(controls, i);
+        bool old_pressed = Controls::PlayerControls::GetButton(last_controls, i);
+
+        if(new_pressed && !old_pressed)
+        {
+            m.type = Type::press;
+            m.message = i;
+            PushMessage_Direct(m);
+        }
+        else if(old_pressed && !new_pressed)
+        {
+            m.type = Type::release;
+            m.message = i;
+            PushMessage_Direct(m);
+        }
+    }
+
+    last_controls = controls;
+}
+
+} // namespace XMessage

@@ -1,0 +1,37 @@
+# ---- build outputs ----
+build-ohos/
+hap/entry/build/
+hap/entry/.cxx/
+hap/.hvigor/
+hap/oh_modules/
+hap/entry/libs/
+hap/**/oh_modules/
+*.hap
+*.har
+
+# ---- prebuilt native artifacts (rebuild: see README) ----
+hap/entry/src/main/cpp/libSDL2.a
+hap/entry/src/main/cpp/libthextech.so
+
+# ---- signing material (use your own certificate) ----
+hap/thextech.p12
+*.p12
+*.cer
+*.p7b
+
+# ---- third-party game assets (download separately, see README) ----
+hap/entry/src/main/resources/resfile/
+rom/
+
+# ---- local junk ----
+*.log
+__pycache__/
+.zcode/
+scr*.png
+scr*.jpg
+launch*.png
+launch*.jpg
+layout.json
+mgr*.png
+mgr*.jpg
+*.tmp

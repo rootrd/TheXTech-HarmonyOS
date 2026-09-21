@@ -1,0 +1,23 @@
+# Folders
+/.idea/*
+/.gradle/*
+/build/*
+/local.properties
+/SDL-default/*
+/thextech/jni/SDL/*
+/thextech/build/*
+/thextech/release/*
+/thextech/apk/release/*
+/thextech/fdroid/release/*
+/thextech/debug/*
+/thextech/.cxx/*
+.externalNativeBuild
+/thextech/src/main/assets/languages/*
+
+# Files
+*.iml
+*.apk
+
+# Key files
+*.jks
+*.keystore

@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:installLocation="auto">
+
+    <!-- OpenGL ES 2.0 -->
+    <uses-feature android:glEsVersion="0x00020000" />
+
+    <!-- Game controller support -->
+    <uses-feature
+        android:name="android.hardware.bluetooth"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.gamepad"
+        android:required="false" />
+    <uses-feature
+        android:name="android.hardware.usb.host"
+        android:required="false" />
+
+    <!-- External mouse input events -->
+    <uses-feature
+        android:name="android.hardware.type.pc"
+        android:required="false" />
+
+    <!-- Touchscreen support -->
+    <uses-feature
+        android:name="android.hardware.touchscreen"
+        android:required="false" />
+
+    <!-- Android TV support -->
+    <uses-feature android:name="android.software.leanback"
+        android:required="false" />
+
+
+    <!-- Allow writing to external storage -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <!-- Allow reading from the external storage -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <!-- This game needs to have the resource directory at user's storage to allow easier customization and episodes placement -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" tools:ignore="ScopedStorage" />
+    <!-- Allow access to the vibrator -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Allow access to Bluetooth devices -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <!-- Allow access to internet -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
+    <application
+        android:allowBackup="true"
+        android:fullBackupContent="false"
+        android:hardwareAccelerated="true"
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@mipmap/ic_banner"
+        android:label="${dstAppName}"
+        android:launchMode="singleInstance"
+        android:requestLegacyExternalStorage="true"
+        android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+        android:isGame="true"
+        tools:targetApi="lollipop"
+        tools:ignore="DataExtractionRules">
+
+        <activity
+            android:name=".Launcher"
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:launchMode="singleInstance"
+            android:screenOrientation="landscape">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
+            </intent-filter>
+
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <action android:name="android.intent.action.EDIT" />
+
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+
+                <data android:scheme="file"/>
+                <data android:scheme="content"/>
+                <data android:mimeType="*/*"/>
+                <data android:host="*" />
+
+                <data android:mimeType="application/lvl" />
+                <data android:mimeType="application/wld" />
+                <data android:mimeType="application/lvlx" />
+                <data android:mimeType="application/wldx" />
+
+                <data android:mimeType="application/x-lvl" />
+                <data android:mimeType="application/x-wld" />
+                <data android:mimeType="application/x-lvlx" />
+                <data android:mimeType="application/x-wldx" />
+
+                <data android:pathPattern=".*\\.lvl" />
+                <data android:pathPattern=".*\\..*\\.lvl" />
+                <data android:pathPattern=".*\\..*\\..*\\.lvl" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.lvl" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.lvl" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.lvl" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.lvl" />
+
+                <data android:pathPattern=".*\\.LVL" />
+                <data android:pathPattern=".*\\..*\\.LVL" />
+                <data android:pathPattern=".*\\..*\\..*\\.LVL" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.LVL" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.LVL" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.LVL" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.LVL" />
+
+                <data android:pathPattern=".*\\.wld" />
+                <data android:pathPattern=".*\\..*\\.wld" />
+                <data android:pathPattern=".*\\..*\\..*\\.wld" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.wld" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.wld" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.wld" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.wld" />
+
+                <data android:pathPattern=".*\\.WLD" />
+                <data android:pathPattern=".*\\..*\\.WLD" />
+                <data android:pathPattern=".*\\..*\\..*\\.WLD" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.WLD" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.WLD" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.WLD" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.WLD" />
+
+                <data android:pathPattern=".*\\.lvlx" />
+                <data android:pathPattern=".*\\..*\\.lvlx" />
+                <data android:pathPattern=".*\\..*\\..*\\.lvlx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.lvlx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.lvlx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.lvlx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.lvlx" />
+
+                <data android:pathPattern=".*\\.LVLX" />
+                <data android:pathPattern=".*\\..*\\.LVLX" />
+                <data android:pathPattern=".*\\..*\\..*\\.LVLX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.LVLX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.LVLX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.LVLX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.LVLX" />
+
+                <data android:pathPattern=".*\\.wldx" />
+                <data android:pathPattern=".*\\..*\\.wldx" />
+                <data android:pathPattern=".*\\..*\\..*\\.wldx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.wldx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.wldx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.wldx" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.wldx" />
+
+                <data android:pathPattern=".*\\.WLDX" />
+                <data android:pathPattern=".*\\..*\\.WLDX" />
+                <data android:pathPattern=".*\\..*\\..*\\.WLDX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\.WLDX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\.WLDX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\.WLDX" />
+                <data android:pathPattern=".*\\..*\\..*\\..*\\..*\\..*\\..*\\.WLDX" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name=".GameSettings"
+            android:theme="@style/Theme.AppCompat.DayNight"
+            android:label="@string/title_activity_game_settings"
+            android:screenOrientation="landscape"
+            android:parentActivityName=".Launcher">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".Launcher" />
+        </activity>
+
+        <activity
+            android:name="thextechActivity"
+            android:alwaysRetainTaskState="true"
+            android:configChanges="layoutDirection|locale|orientation|uiMode|screenLayout|screenSize|smallestScreenSize|keyboard|keyboardHidden|navigation"
+            android:launchMode="singleInstance"
+            android:screenOrientation="landscape">
+            <!-- android:label="@string/app_name" -->
+            <!-- Drop file event -->
+            <!--
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="*/*" />
+            </intent-filter>
+            -->
+        </activity>
+
+        <meta-data android:name="SDL_ENV.SDL_ACCELEROMETER_AS_JOYSTICK" android:value="0"/>
+    </application>
+
+</manifest>

@@ -1,0 +1,143 @@
+name: DSi BlocksDS CI
+
+on:
+  push:
+    branches:
+      - main
+      - versus-ci-homebrew
+  pull_request:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: "${{ matrix.config.name }} | ${{ matrix.config.build_type }}"
+    runs-on: ubuntu-latest
+    container: ghcr.io/thextech/wohlnet-ci-ubuntu2404-blocksds:latest
+    env:
+        WONDERFUL_TOOLCHAIN: /opt/wonderful
+        BLOCKSDS: /opt/wonderful/thirdparty/blocksds/core
+        BLOCKSDSEXT: /opt/wonderful/thirdparty/blocksds/external
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+        - {
+            name: "DSi BlocksDS build",
+
+            extra_options: "-DCMAKE_TOOLCHAIN_FILE=$BLOCKSDS/cmake/BlocksDSi.cmake -DCMAKE_INTERPROCEDURAL_OPTIMIZATION=ON",
+            extra_path: "/opt/wonderful/bin",
+
+            deps_cmdline: "echo 'BlocksDS SDK is already pre-installed'",
+
+            generator: "Ninja",
+            build_type: "RelWithDebInfo",
+            executable_name: "thextech",
+            subdir_name: "thextech-dsi",
+            upload_directory: "www/dsi/"
+          }
+
+    steps:
+    - name: Check for the upload support
+      id: upload-check
+      shell: bash
+      run: |
+        if [[ "${{ secrets.builds_login }}" != '' && \
+              "${{ secrets.builds_password }}" != '' && \
+              "${{ secrets.builds_host }}" != '' ]]; then
+          echo "available=true" >> $GITHUB_OUTPUT;
+        else
+          echo "available=false" >> $GITHUB_OUTPUT;
+        fi
+
+    - name: Install Dependencies
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.deps_cmdline }}" ]]; then
+          eval ${{ matrix.config.deps_cmdline }}
+        fi
+        cmake --version
+
+    - uses: TheXTech/checkout@v0.1
+
+    - uses: TheXTech/branch-name@v0.1
+
+
+    - name: Pull submodules
+      shell: bash
+      run: |
+        git submodule update --init --recursive
+
+    - name: Configure
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+            export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+
+        cmake -B build -G "${{ matrix.config.generator }}" -DCMAKE_BUILD_TYPE=${{ matrix.config.build_type }} ${{ matrix.config.extra_options }} .
+
+    - name: Build
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+            export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+
+        cmake --build build --target all -j4
+
+    - name: Check codesize and RAM usage
+      if: success() && runner.os == 'Linux'
+      shell: bash
+      run: |
+        size build/output/bin/thextech.elf
+
+    - name: Create Package
+      if: success()
+      shell: bash
+      run: |
+        cd build
+        mkdir package
+        mkdir "package/${{ matrix.config.subdir_name }}"
+        cp ../changelog.txt "package/${{ matrix.config.subdir_name }}/"
+        cp ../LICENSE "package/${{ matrix.config.subdir_name }}/License.TheXTech.txt"
+        cat ../docs/README_DSI.md ../README.md >> "package/${{ matrix.config.subdir_name }}/README.md"
+        cp thextech.nds "package/${{ matrix.config.subdir_name }}/"
+        cd package
+        zip -9 -r "thextech-blocksds-${BRANCH_NAME}.zip" "${{ matrix.config.subdir_name }}"
+        rm -Rf "${{ matrix.config.subdir_name }}"
+        cd ../..
+
+    - name: Upload artifact
+      if: success()
+      uses: actions/upload-artifact@v4
+      continue-on-error: true
+      with:
+        path: build/package/*.zip
+        name: ${{ matrix.config.name }} ${{ matrix.config.build_type }}
+
+    - name: Deploy to builds.wohlsoft.ru
+      if: success() && github.event_name != 'pull_request' && steps.upload-check.outputs.available == 'true'
+      continue-on-error: true
+      shell: bash
+      run: |
+        if [[ ! -z "${{ matrix.config.extra_path }}" ]]; then
+            export PATH=${{ matrix.config.extra_path }}:${PATH}
+        fi
+
+        UPLOAD_LIST="set ssl:verify-certificate no;"
+        for q in ./build/package/*.zip; do
+            UPLOAD_LIST="${UPLOAD_LIST} put -O ${{ matrix.config.upload_directory }} $q;"
+        done
+        lftp -e "${UPLOAD_LIST} exit" -u ${{ secrets.builds_login }},${{ secrets.builds_password }} ${{ secrets.builds_host }}
+
+    - name: List Build Directory
+      if: always()
+      shell: bash
+      run: |
+        git status
+        ls -lR build

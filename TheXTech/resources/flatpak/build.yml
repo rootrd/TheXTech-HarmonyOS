@@ -1,0 +1,31 @@
+id: ru.wohlsoft.TheXTech
+default-branch: dev
+runtime: org.freedesktop.Platform
+runtime-version: "22.08"
+sdk: org.freedesktop.Sdk
+command: ru.wohlsoft.TheXTech
+modules:
+  - buildsystem: cmake-ninja
+    name: thextech
+    sources:
+      - type: git
+        url: https://github.com/TheXTech/TheXTech
+        branch: main
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=MinSizeRel
+      - -DTHEXTECH_EXECUTABLE_NAME=ru.wohlsoft.TheXTech
+      - -DPGE_SHARED_SDLMIXER=Off
+      - -DFLATPAK_BUILD=On
+      - -DOVERRIDE_GIT_BRANCH=
+finish-args:
+  # remove this after the new paths update, use $XDG_DATA_HOME inside the sandbox instead
+  - --filesystem=host
+  - --device=dri
+  # drop to --device=input once supported on Ubuntu and Debian
+  - --device=all
+  - --socket=x11
+  - --socket=wayland
+  # set fallback-x11 whenever we have SDL client-side decorations on Wayland GNOME
+  # - --socket=fallback-x11
+  - --socket=pulseaudio
+  - --share=ipc
