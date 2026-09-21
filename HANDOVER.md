@@ -1,7 +1,9 @@
 # TheXTech 鸿蒙 NEXT 移植 — 交接文档
 
-> 最后更新：2026-09-21 (第三轮:触控/音频/手柄/旋转全部修复)  
-> 项目目录：`E:\TheXTechOH`
+> 最后更新：2026-09-21 (第七轮:壁纸/图标/地图导入/上传GitHub)  
+> 项目目录：`E:\TheXTechOH`  
+> **GitHub 仓库：https://github.com/rootrd/TheXTech-HarmonyOS (公开)** — 提交 d347633  
+> 推送要点:本机 git 全局有 ghfast.top/github.akams.cn 的 insteadOf 重写(只读加速,push 会失败);推送前临时 unset,用 `git -c http.sslVersion=tlsv1.3 push`(强制TLS1.3过TUN代理),推完恢复重写。凭据在 Windows 凭据管理器(GCM,rootrd)。仓库已排除:游戏素材(resfile/gamedata、assets-smbx13、rom/)、签名证书 thetech.p12、构建产物与二进制(libSDL2.a/libthextech.so、build-wsl、build-ohos、HAP输出)。
 
 ---
 
